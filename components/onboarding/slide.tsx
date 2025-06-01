@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { moderateScale, scale, verticalScale } from "react-native-size-matters";
 import { Defs, RadialGradient, Rect, Stop, Svg } from "react-native-svg";
+import AuthModal from "../auth/auth.modal";
 
 export default function Slide({
   slide,
@@ -149,6 +150,7 @@ export default function Slide({
         }}
       >
         <Pressable style={{ flex: 1 }} onPress={() => setModalVisible(false)}>
+          <AuthModal setModalVisible={setModalVisible} />
         </Pressable>
       </Modal>
     </>

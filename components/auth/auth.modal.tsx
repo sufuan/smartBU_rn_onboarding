@@ -1,126 +1,51 @@
-import { fontSizes, windowHeight, windowWidth } from "@/themes/app.constant";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import axios from "axios";
-import { makeRedirectUri, useAuthRequest } from "expo-auth-session";
 import { BlurView } from "expo-blur";
 import JWT from "expo-jwt";
 import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import * as WebBrowser from "expo-web-browser";
-import React, { useEffect } from "react";
-import { Image, Platform, Pressable, Text, View } from "react-native";
+import { useEffect } from "react";
+import { Image, Pressable, Text, View } from "react-native";
+
+import { fontSizes, windowHeight, windowWidth } from "@/themes/app.constant";
 
 export default function AuthModal({
   setModalVisible,
 }: {
   setModalVisible: (modal: boolean) => void;
 }) {
-  const configureGoogleSignIn = () => {
-    if (Platform.OS === "ios") {
-      GoogleSignin.configure({
-        iosClientId: process.env.EXPO_PUBLIC_IOS_GOOGLE_API_KEY,
-      });
-    } else {
-      GoogleSignin.configure({
-        webClientId:
-          "500604689956-74tau857bhoviihkt0jsqitldq4tsjlf.apps.googleusercontent.com",
-      });
-    }
-  };
-
   useEffect(() => {
-    configureGoogleSignIn();
-  }, []);
-
-  // github auth start
-  const githubAuthEndpoints = {
-    authorizationEndpoint: "https://github.com/login/oauth/authorize",
-    tokenEndpoint: "https://github.com/login/oauth/access_token",
-    revocationEndpoint: `https://github.com/settings/connections/applications/${process.env.EXPO_PUBLIC_GITHUB_CLIENT_ID}`,
-  };
-
-  const [request, response] = useAuthRequest(
-    {
-      clientId: process.env.EXPO_PUBLIC_GITHUB_CLIENT_ID!,
-      clientSecret: process.env.EXPO_PUBLIC_GITHUB_CLIENT_SECRET!,
-      scopes: ["identity"],
-      redirectUri: makeRedirectUri({
-        scheme: "becodemy",
-      }),
-    },
-    githubAuthEndpoints
-  );
-
-  useEffect(() => {
-    if (response?.type === "success") {
-      const { code } = response.params;
-      fetchAccessToken(code);
-    }
-  }, []);
-
-  const handleGithubLogin = async () => {
-    const result = await WebBrowser.openAuthSessionAsync(
-      request?.url!,
-      makeRedirectUri({
-        scheme: "becodemy",
-      })
-    );
-
-    if (result.type === "success" && result.url) {
-      const urlParams = new URLSearchParams(result.url.split("?")[1]);
-      const code: any = urlParams.get("code");
-      fetchAccessToken(code);
-    }
-  };
-
-  const fetchAccessToken = async (code: string) => {
-    const tokenResponse = await fetch(
-      "https://github.com/login/oauth/access_token",
-      {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: `client_id=${process.env.EXPO_PUBLIC_GITHUB_CLIENT_ID}&client_secret=${process.env.EXPO_PUBLIC_GITHUB_CLIENT_SECRET}&code=${code}`,
-      }
-    );
-    const tokenData = await tokenResponse.json();
-    const access_token = tokenData.access_token;
-    if (access_token) {
-      fetchUserInfo(access_token);
-    } else {
-      console.error("Error fetching access token:", tokenData);
-    }
-  };
-
-  const fetchUserInfo = async (token: string) => {
-    const userResponse = await fetch("https://api.github.com/user", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+    GoogleSignin.configure({
+      webClientId:
+        "115355708216-m9udpjkdfq29rf6fbc3r08d4mb7t7evg.apps.googleusercontent.com", // required for web sign-in
+      iosClientId:
+        "115355708216-kkavg7bmm4pdr58d8b769hhhsu3f6sgm.apps.googleusercontent.com", // iOS only
     });
-
-    const userData = await userResponse.json();
-    await authHandler({
-      name: userData.name!,
-      email: userData.email!,
-      avatar: userData.avatar_url!,
-    });
-  };
-  // github auth end
+  }, []);
 
   const googleSignIn = async () => {
     try {
-      await GoogleSignin.hasPlayServices();
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       const userInfo = await GoogleSignin.signIn();
+
+      console.log("Google User Info:", userInfo);
+
+      if (!userInfo || !userInfo.data || !userInfo.data.user) {
+        console.error("User info or user object is missing:", userInfo);
+        return;
+      }
+
+      const { name, email, photo } = userInfo.data.user;
+
+      console.log("User is logged in:", { name, email, photo });
+
       await authHandler({
-        name: userInfo.user.name!,
-        email: userInfo.user.email!,
-        avatar: userInfo.user.photo!,
+        name: name ?? "Unknown User",
+        email: email ?? "no-email@example.com",
+        avatar: photo ?? "",
       });
     } catch (error) {
-      console.log(error);
+      console.error("Google Sign-In Error:", error);
     }
   };
 
@@ -133,30 +58,44 @@ export default function AuthModal({
     email: string;
     avatar: string;
   }) => {
-    const user = {
-      name,
-      email,
-      avatar,
-    };
-    const token = JWT.encode(
-      {
-        ...user,
-      },
-      process.env.EXPO_PUBLIC_JWT_SECRET_KEY!
-    );
-    const res = await axios.post(
-      `${process.env.EXPO_PUBLIC_SERVER_URI}/login`,
-      {
-        signedToken: token,
-      }
-    );
-    await SecureStore.setItemAsync("accessToken", res.data.accessToken);
-    await SecureStore.setItemAsync("name", name);
-    await SecureStore.setItemAsync("email", email);
-    await SecureStore.setItemAsync("avatar", email);
+    const user = { name, email, avatar };
 
-    setModalVisible(false);
-    router.push("/(tabs)");
+    // Check if JWT secret is accessible
+    const jwtSecret = process.env.EXPO_PUBLIC_JWT_SECRET_KEY;
+    console.log("JWT Secret from env:", jwtSecret ? "FOUND" : "MISSING");
+
+    if (!jwtSecret) {
+      console.error("JWT secret key is missing!");
+      return;
+    }
+
+    let token = "";
+    try {
+      token = JWT.encode(user, jwtSecret);
+      console.log("Encoded JWT Token:", token);
+    } catch (err) {
+      console.error("Error encoding JWT token:", err);
+      return;
+    }
+
+    try {
+      const res = await axios.post(
+        `${process.env.EXPO_PUBLIC_SERVER_URI}/login`,
+        { signedToken: token }
+      );
+
+      console.log("Backend login response:", res.data);
+
+      await SecureStore.setItemAsync("accessToken", res.data.accessToken);
+      await SecureStore.setItemAsync("name", name);
+      await SecureStore.setItemAsync("email", email);
+      await SecureStore.setItemAsync("avatar", avatar);
+
+      setModalVisible(false);
+      router.push("/(tabs)");
+    } catch (err) {
+      console.error("Backend login error:", err);
+    }
   };
 
   return (
@@ -208,8 +147,6 @@ export default function AuthModal({
               }}
             />
           </Pressable>
-       
-          
         </View>
       </Pressable>
     </BlurView>

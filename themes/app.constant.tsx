@@ -1,5 +1,5 @@
 import { DimensionValue, Dimensions, PixelRatio, Platform } from "react-native";
-import { getStatusBarHeight } from "react-native-status-bar-height";
+import { initialWindowMetrics } from "react-native-safe-area-context";
 
 export const SCREEN_HEIGHT = Dimensions.get("window").height;
 export const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -10,7 +10,9 @@ export const IsAndroid = Platform.OS === "android";
 
 export const IsHaveNotch = IsIOS && SCREEN_HEIGHT > 750;
 
-export const hasNotch = Platform.OS === "ios" && getStatusBarHeight() > 20;
+// ✅ Replaced getStatusBarHeight() with safe-area-context initial metrics
+const statusBarHeight = initialWindowMetrics?.insets?.top ?? 20;
+export const hasNotch = IsIOS && statusBarHeight > 20;
 
 export const Isiphone12promax = IsIOS && SCREEN_HEIGHT > 2778;
 
