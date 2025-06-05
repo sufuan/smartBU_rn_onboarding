@@ -2,14 +2,19 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import jwt from "jsonwebtoken";
+import { isAuthenticated } from "./middleware/auth.js";
 import prisma from "./utils/prisma.js";
 import { sendToken } from "./utils/sendToken.js";
+
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+
+
 
 app.post("/login", async (req, res) => {
   try {
@@ -52,6 +57,22 @@ app.post("/login", async (req, res) => {
     res.status(500).json({ message: "Internal Server Error", error });
   }
 });
+
+
+
+// get logged in user
+app.get("/me", isAuthenticated, async (req, res, next) => {
+  try {
+    const user = req.user;
+    res.status(201).json({
+      success: true,
+      user,
+    });
+  } catch (error) {
+    console.log(error);
+  }
+});
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
