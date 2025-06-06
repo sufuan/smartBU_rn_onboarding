@@ -29,8 +29,10 @@ export default function useUser(): UseUserReturn {
     setLoader(true);
     try {
       await setAuthorizationHeader(); // Ensure header is set before the request
+      const serverUri = process.env.EXPO_PUBLIC_SERVER_URI;
+      console.log(`Attempting to connect to server at: ${serverUri}`);
       const response = await axios.get(
-        `${process.env.EXPO_PUBLIC_SERVER_URI}/me`
+        `${serverUri}/me`
         
       );
       // Ensure response.data.user exists and has the expected properties
