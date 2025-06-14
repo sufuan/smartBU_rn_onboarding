@@ -5,10 +5,9 @@ import { useTheme } from "@/context/theme.context";
 import useUser, { setAuthorizationHeader } from "@/hooks/fetch/useUser";
 import {
   fontSizes,
-  IsAndroid,
   SCREEN_WIDTH,
   windowHeight,
-  windowWidth,
+  windowWidth
 } from "@/themes/app.constant";
 import CourseDetailsLoader from "@/utils/course-details-skelton";
 import { Spacer } from "@/utils/skelton";
@@ -24,8 +23,9 @@ import {
   ScrollView,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
 
 export default function CourseDetailsScreen() {
@@ -36,6 +36,7 @@ export default function CourseDetailsScreen() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [loader, setLoader] = useState(true);
   const [reviews, setReviews] = useState([]);
+  const insets = useSafeAreaInsets();
 
   const courseData: CourseType | any = params;
   const prerequisites: BenefitsType[] | any = JSON.parse(params?.prerequisites || "[]");
@@ -69,9 +70,19 @@ export default function CourseDetailsScreen() {
         await axios.post(`${process.env.EXPO_PUBLIC_SERVER_URI}/create-free-order`, {
           courseId: courseData.id,
         });
+        router.replace("/");
+      } else {
+        router.push({
+          pathname: "/checkout",
+          params: {
+            id: courseData.id,
+            name: courseData.name,
+            price: courseData.price,
+          },
+        });
       }
     } catch (error) {
-      console.log("Free course order failed:", error);
+      console.log("Course order failed:", error);
     } finally {
       setPurchaseLoader(false);
     }
@@ -102,7 +113,12 @@ export default function CourseDetailsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.dark ? "#131313" : "#fff" }}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingBottom: 120 // Fixed large padding to ensure content is not hidden
+        }}
+      >
         <View style={{ padding: windowWidth(15) }}>
           <Image
             source={{
@@ -273,45 +289,67 @@ export default function CourseDetailsScreen() {
       <BlurView
         intensity={theme.dark ? 30 : 2}
         style={{
-          backgroundColor: !theme.dark ? "#eaf3fb85" : "#000",
-          paddingHorizontal: windowHeight(12),
-          paddingVertical: windowHeight(8),
-          paddingBottom: IsAndroid ? windowHeight(25) : windowHeight(20),
-          position: 'absolute',
+          position: "absolute",
           bottom: 0,
           left: 0,
           right: 0,
+          backgroundColor: !theme.dark ? "#eaf3fb85" : "#000",
         }}
       >
-        {isPurchased ? (
-          <TouchableOpacity
-            style={{
-              backgroundColor: "#2467EC",
-              paddingVertical: windowHeight(10),
-              borderRadius: windowWidth(8),
-            }}
-            onPress={handleCourseAccess}
-          >
-            <Text style={{ textAlign: "center", color: "#FFFF", fontSize: fontSizes.FONT24, fontFamily: "Poppins_600SemiBold" }}>
-              Enter to course
-            </Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={{
-              backgroundColor: "#2467EC",
-              paddingVertical: windowHeight(10),
-              borderRadius: windowWidth(8),
-              opacity: purchaseLoader ? 0.6 : 1,
-            }}
-            disabled={purchaseLoader}
-            onPress={handlePurchase}
-          >
-            <Text style={{ textAlign: "center", color: "#FFFF", fontSize: fontSizes.FONT24, fontFamily: "Poppins_600SemiBold" }}>
-              {courseData?.price === "0" ? "Enroll for Free" : `Buy Now - $${courseData?.price}`}
-            </Text>
-          </TouchableOpacity>
-        )}
+        <View
+          style={{
+            paddingHorizontal: windowWidth(15),
+            paddingTop: windowHeight(10),
+            paddingBottom:
+              insets.bottom > 0 ? insets.bottom : windowHeight(15),
+          }}
+        >
+          {isPurchased ? (
+            <TouchableOpacity
+              style={{
+                backgroundColor: "#2467EC",
+                paddingVertical: windowHeight(10),
+                borderRadius: windowWidth(8),
+              }}
+              onPress={handleCourseAccess}
+            >
+              <Text
+                style={{
+                  textAlign: "center",
+                  color: "#FFFF",
+                  fontSize: fontSizes.FONT24,
+                  fontFamily: "Poppins_600SemiBold",
+                }}
+              >
+                Enter to course
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={{
+                backgroundColor: "#2467EC",
+                paddingVertical: windowHeight(10),
+                borderRadius: windowWidth(8),
+                opacity: purchaseLoader ? 0.6 : 1,
+              }}
+              disabled={purchaseLoader}
+              onPress={handlePurchase}
+            >
+              <Text
+                style={{
+                  textAlign: "center",
+                  color: "#FFFF",
+                  fontSize: fontSizes.FONT24,
+                  fontFamily: "Poppins_600SemiBold",
+                }}
+              >
+                {courseData?.price === "0"
+                  ? "Enroll for Free"
+                  : `Buy Now - $${courseData?.price}`}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </BlurView>
     </View>
   );
