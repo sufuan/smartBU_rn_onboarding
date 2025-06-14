@@ -43,7 +43,8 @@
           "iosUrlScheme": "com.googleusercontent.apps.115355708216-kkavg7bmm4pdr58d8b769hhhsu3f6sgm"
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "react-native-iap"
     ],
     "experiments": {
       "typedRoutes": true

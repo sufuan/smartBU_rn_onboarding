@@ -1,22 +1,22 @@
-import axios from "axios";
+import type { CourseType } from "@/types/course"; // optional if you use global types
 import { useEffect, useState } from "react";
 
 const useGetCourses = () => {
   const [courses, setCourses] = useState<CourseType[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchCourses = async () => {
       try {
-        const response = await axios.get(
-          `${process.env.EXPO_PUBLIC_SERVER_URI}/get-courses`
-        );
+        // Simulate loading delay
+        await new Promise((resolve) => setTimeout(resolve, 800));
 
-        setCourses(response.data.courses);
+        const data = require("@/assets/mockCourses.json"); // Load local JSON
+        setCourses(data.courses);
         setLoading(false);
-      } catch (error: any) {
-        setError(error.message);
+      } catch (err: any) {
+        setError("Failed to load courses");
         setLoading(false);
       }
     };

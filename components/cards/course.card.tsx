@@ -1,9 +1,12 @@
+import { useTheme } from "@/context/theme.context";
 import {
+  fontSizes,
   IsAndroid,
   SCREEN_WIDTH,
   windowHeight,
   windowWidth,
 } from "@/themes/app.constant";
+// import Ratings from "@/utils/ratings";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
@@ -11,6 +14,7 @@ import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { scale } from "react-native-size-matters";
 
 export default function CourseCard({ item }: { item: CourseType }) {
+  const { theme } = useTheme();
   return (
     <Pressable
       style={{
@@ -29,7 +33,14 @@ export default function CourseCard({ item }: { item: CourseType }) {
         })
       }
     >
-      <View style={[styles.card, { backgroundColor: "#eaf3fb85" }]}>
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: theme.dark ? "#3c43485c" : "#eaf3fb85",
+          },
+        ]}
+      >
         <Image
           source={{
             uri:
@@ -61,8 +72,8 @@ export default function CourseCard({ item }: { item: CourseType }) {
             style={{
               paddingTop: windowHeight(5),
               fontFamily: "Poppins_400Regular",
-              fontSize: 18,
-              color: "#3E3B54",
+              fontSize: fontSizes.FONT18,
+              color: theme.dark ? "#fff" : "#3E3B54",
             }}
           >
             {item.name}
@@ -74,11 +85,12 @@ export default function CourseCard({ item }: { item: CourseType }) {
               justifyContent: "space-between",
             }}
           >
+            {/* <Ratings rating={item.ratings} /> */}
             <Text
               style={{
                 fontFamily: "Poppins_400Regular",
-                color: "#3E3B54",
-                fontSize: 18,
+                color: !theme.dark ? "#3E3B54" : "#fff",
+                fontSize: fontSizes.FONT18,
               }}
             >
               {item?.purchased} Students
@@ -95,8 +107,8 @@ export default function CourseCard({ item }: { item: CourseType }) {
               <Text
                 style={{
                   fontFamily: "Poppins_400Regular",
-                  fontSize: 20,
-                  color: "#000",
+                  fontSize: fontSizes.FONT20,
+                  color: !theme.dark ? "#000" : "#fff",
                 }}
               >
                 {item.price === 0 ? "Free" : item.price + "$"}
@@ -104,23 +116,27 @@ export default function CourseCard({ item }: { item: CourseType }) {
               <Text
                 style={{
                   fontFamily: "Poppins_400Regular",
-                  fontSize: 20,
+                  fontSize: fontSizes.FONT20,
                   paddingLeft: windowWidth(5),
                   marginTop: windowHeight(-5),
                   textDecorationLine: "line-through",
-                  color: "#3E3B54",
+                  color: !theme.dark ? "#3E3B54" : "#fff",
                 }}
               >
                 {item.estimatedPrice}$
               </Text>
             </View>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Feather name="list" size={scale(20)} color="#3E3B54" />
+              <Feather
+                name="list"
+                size={scale(20)}
+                color={theme.dark ? "#fff" : "#3E3B54"}
+              />
               <Text
                 style={{
                   fontFamily: "Poppins_400Regular",
-                  fontSize: 20,
-                  color: "#3E3B54",
+                  fontSize: fontSizes.FONT20,
+                  color: !theme.dark ? "#3E3B54" : "#fff",
                   paddingLeft: windowWidth(5),
                 }}
               >

@@ -1,0 +1,34 @@
+{
+  "courses": [
+    {
+      "id": "1",
+      "name": "React Native for Beginners",
+      "slug": "build-your-mobile-app-development-career-with-react-native",
+      "price": 0,
+      "estimatedPrice": 49,
+      "purchased": 320,
+      "courseData": [
+        { "title": "Introduction" },
+        { "title": "Environment Setup" },
+        { "title": "First App" }
+      ],
+      "prerequisites": ["Basic JavaScript", "Basic React"],
+      "benefits": ["Learn React Native", "Build mobile apps"]
+    },
+    {
+      "id": "2",
+      "name": "MERN Stack E-commerce Project",
+      "slug": "multi-vendor-mern-stack-e-commerce-project-with-all-functionalities-absolutely-for-beginners",
+      "price": 29,
+      "estimatedPrice": 129,
+      "purchased": 210,
+      "courseData": [
+        { "title": "Project Setup" },
+        { "title": "Authentication" },
+        { "title": "Product Module" }
+      ],
+      "prerequisites": ["JavaScript", "MongoDB", "React", "Node.js"],
+      "benefits": ["Real project experience", "Build production-grade app"]
+    }
+  ]
+}

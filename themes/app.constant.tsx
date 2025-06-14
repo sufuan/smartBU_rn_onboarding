@@ -1,4 +1,4 @@
-import { DimensionValue, Dimensions, PixelRatio, Platform } from "react-native";
+import { DimensionValue, Dimensions, Platform } from "react-native";
 import { initialWindowMetrics } from "react-native-safe-area-context";
 
 export const SCREEN_HEIGHT = Dimensions.get("window").height;
@@ -21,7 +21,7 @@ export const windowHeight = (height: DimensionValue): number => {
     return 0;
   }
   let tempHeight = SCREEN_HEIGHT * (parseFloat(height.toString()) / 667);
-  return PixelRatio.roundToNearestPixel(tempHeight);
+  return Math.round(tempHeight);
 };
 
 export const windowWidth = (width: DimensionValue): number => {
@@ -29,7 +29,7 @@ export const windowWidth = (width: DimensionValue): number => {
     return 0;
   }
   let tempWidth = SCREEN_WIDTH * (parseFloat(width.toString()) / 480);
-  return PixelRatio.roundToNearestPixel(tempWidth);
+  return Math.round(tempWidth);
 };
 
 export const fontSizes = {
