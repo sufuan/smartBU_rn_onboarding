@@ -19,7 +19,6 @@ import { MotiView } from "moti";
 import { Skeleton } from "moti/skeleton";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
   Image,
   ScrollView,
   Text,
@@ -32,7 +31,7 @@ import { scale, verticalScale } from "react-native-size-matters";
 export default function CourseDetailsScreen() {
   const params: any = useGlobalSearchParams();
   const [activeButton, setActiveButton] = useState("About");
-  const { user, loader: userLoader, refetch } = useUser();
+  const { user, loader: userLoader } = useUser();
   const [purchaseLoader, setPurchaseLoader] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [loader, setLoader] = useState(true);
@@ -63,42 +62,31 @@ export default function CourseDetailsScreen() {
   const userOrders = user?.orders;
   const isPurchased = userOrders?.find((i: OrderType) => i.courseId === courseData.id);
 
-const handlePurchase = async () => {
-  console.log("Starting purchase for course:", courseData.id);
-  setPurchaseLoader(true);
-  try {
-    if (courseData.price === "0") {
-      await setAuthorizationHeader();
-      const res = await axios.post(
-        `${process.env.EXPO_PUBLIC_SERVER_URI}/create-free-order`,
-        { courseId: courseData.id }
-      );
-      console.log("Free order response:", res.data);
-      if (res.data.success) {
-        router.replace({
-          pathname: "/(routes)/course-access",
-          params: courseData,
+  const handlePurchase = async () => {
+    setPurchaseLoader(true);
+    try {
+      if (courseData.price === "0") {
+        await setAuthorizationHeader();
+        await axios.post(`${process.env.EXPO_PUBLIC_SERVER_URI}/create-free-order`, {
+          courseId: courseData.id,
         });
+        router.replace("/");
       } else {
-        Alert.alert("Enrollment failed", res.data.message || "Try again later.");
+        router.push({
+          pathname: "/checkout",
+          params: {
+            id: courseData.id,
+            name: courseData.name,
+            price: courseData.price,
+          },
+        });
       }
-    } else {
-      router.push({
-        pathname: "/checkout",
-        params: {
-          id: courseData.id,
-          name: courseData.name,
-          price: courseData.price,
-        },
-      });
+    } catch (error) {
+      console.log("Course order failed:", error);
+    } finally {
+      setPurchaseLoader(false);
     }
-  } catch (error) {
-    console.error("Course order failed:", error);
-    Alert.alert("Error", "Something went wrong. Please try again.");
-  } finally {
-    setPurchaseLoader(false);
-  }
-};
+  };
 
   const reviewsFetchingHandler = async () => {
     setActiveButton("Reviews");
@@ -209,7 +197,7 @@ const handlePurchase = async () => {
             >
               Course Prerequisites
             </Text>
-            {prerequisites.map((i: BenefitsType, index: number) => (
+            {prerequisites.map((i, index) => (
               <View key={index} style={{ flexDirection: "row", paddingVertical: windowHeight(5) }}>
                 <Ionicons name="checkmark-done-outline" size={scale(17)} color={theme.dark ? "#fff" : "#000"} />
                 <Text style={{ marginLeft: windowWidth(5), fontSize: fontSizes.FONT18, color: theme.dark ? "#fff" : "#000" }}>
@@ -230,7 +218,7 @@ const handlePurchase = async () => {
             >
               Course Benefits
             </Text>
-            {benefits.map((i: BenefitsType, index: number) => (
+            {benefits.map((i, index) => (
               <View key={index} style={{ flexDirection: "row", paddingVertical: windowHeight(5) }}>
                 <Ionicons name="checkmark-done-outline" size={scale(17)} color={theme.dark ? "#fff" : "#000"} />
                 <Text style={{ marginLeft: windowWidth(5), fontSize: fontSizes.FONT18, color: theme.dark ? "#fff" : "#000" }}>

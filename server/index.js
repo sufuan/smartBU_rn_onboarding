@@ -128,7 +128,7 @@ app.post("/create-course", async (req, res) => {
     } = req.body;
 
     // Simple validation
-    if (!name || !description || !price || !slug) {
+    if (!name || !description || price === undefined || price === null || !slug) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
