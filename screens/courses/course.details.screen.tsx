@@ -19,6 +19,7 @@ import { MotiView } from "moti";
 import { Skeleton } from "moti/skeleton";
 import React, { useEffect, useState } from "react";
 import {
+  Alert,
   Image,
   ScrollView,
   Text,
@@ -31,7 +32,7 @@ import { scale, verticalScale } from "react-native-size-matters";
 export default function CourseDetailsScreen() {
   const params: any = useGlobalSearchParams();
   const [activeButton, setActiveButton] = useState("About");
-  const { user, loader: userLoader } = useUser();
+  const { user, loader: userLoader, refetch } = useUser();
   const [purchaseLoader, setPurchaseLoader] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [loader, setLoader] = useState(true);
@@ -62,31 +63,42 @@ export default function CourseDetailsScreen() {
   const userOrders = user?.orders;
   const isPurchased = userOrders?.find((i: OrderType) => i.courseId === courseData.id);
 
-  const handlePurchase = async () => {
-    setPurchaseLoader(true);
-    try {
-      if (courseData.price === "0") {
-        await setAuthorizationHeader();
-        await axios.post(`${process.env.EXPO_PUBLIC_SERVER_URI}/create-free-order`, {
-          courseId: courseData.id,
+const handlePurchase = async () => {
+  console.log("Starting purchase for course:", courseData.id);
+  setPurchaseLoader(true);
+  try {
+    if (courseData.price === "0") {
+      await setAuthorizationHeader();
+      const res = await axios.post(
+        `${process.env.EXPO_PUBLIC_SERVER_URI}/create-free-order`,
+        { courseId: courseData.id }
+      );
+      console.log("Free order response:", res.data);
+      if (res.data.success) {
+        router.replace({
+          pathname: "/(routes)/course-access",
+          params: courseData,
         });
-        router.replace("/");
       } else {
-        router.push({
-          pathname: "/checkout",
-          params: {
-            id: courseData.id,
-            name: courseData.name,
-            price: courseData.price,
-          },
-        });
+        Alert.alert("Enrollment failed", res.data.message || "Try again later.");
       }
-    } catch (error) {
-      console.log("Course order failed:", error);
-    } finally {
-      setPurchaseLoader(false);
+    } else {
+      router.push({
+        pathname: "/checkout",
+        params: {
+          id: courseData.id,
+          name: courseData.name,
+          price: courseData.price,
+        },
+      });
     }
-  };
+  } catch (error) {
+    console.error("Course order failed:", error);
+    Alert.alert("Error", "Something went wrong. Please try again.");
+  } finally {
+    setPurchaseLoader(false);
+  }
+};
 
   const reviewsFetchingHandler = async () => {
     setActiveButton("Reviews");
@@ -197,7 +209,7 @@ export default function CourseDetailsScreen() {
             >
               Course Prerequisites
             </Text>
-            {prerequisites.map((i, index) => (
+            {prerequisites.map((i: BenefitsType, index: number) => (
               <View key={index} style={{ flexDirection: "row", paddingVertical: windowHeight(5) }}>
                 <Ionicons name="checkmark-done-outline" size={scale(17)} color={theme.dark ? "#fff" : "#000"} />
                 <Text style={{ marginLeft: windowWidth(5), fontSize: fontSizes.FONT18, color: theme.dark ? "#fff" : "#000" }}>
@@ -218,7 +230,7 @@ export default function CourseDetailsScreen() {
             >
               Course Benefits
             </Text>
-            {benefits.map((i, index) => (
+            {benefits.map((i: BenefitsType, index: number) => (
               <View key={index} style={{ flexDirection: "row", paddingVertical: windowHeight(5) }}>
                 <Ionicons name="checkmark-done-outline" size={scale(17)} color={theme.dark ? "#fff" : "#000"} />
                 <Text style={{ marginLeft: windowWidth(5), fontSize: fontSizes.FONT18, color: theme.dark ? "#fff" : "#000" }}>
