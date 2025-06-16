@@ -1,6 +1,6 @@
 import ReviewCard from "@/components/cards/review.card";
-import CourseDetailsTabs from "@/components/course/course.details.tabs";
-import CourseLesson from "@/components/course/course.lesson";
+import CourseLesson from "@/components/laundry/service.details";
+import CourseDetailsTabs from "@/components/laundry/service.options";
 import { useTheme } from "@/context/theme.context";
 import useUser, { setAuthorizationHeader } from "@/hooks/fetch/useUser";
 import {
@@ -9,7 +9,7 @@ import {
   windowHeight,
   windowWidth
 } from "@/themes/app.constant";
-import CourseDetailsLoader from "@/utils/course-details-skelton";
+import CourseDetailsLoader from "@/utils/service-details-skeleton";
 import { Spacer } from "@/utils/skelton";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";

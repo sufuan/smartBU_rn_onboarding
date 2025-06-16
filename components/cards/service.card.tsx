@@ -23,7 +23,7 @@ export default function CourseCard({ item }: { item: CourseType }) {
       }}
       onPress={() =>
         router.push({
-          pathname: "/(routes)/course-details",
+          pathname: "/(routes)/service-details",
           params: {
             ...(item as any),
             prerequisites: JSON.stringify(item.prerequisites),

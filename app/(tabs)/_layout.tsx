@@ -39,7 +39,7 @@ export default function _layout() {
                       color={color}
                     />
                   );
-                case "courses/index":
+                case "services/index":
                   return (
                     <Feather
                       name="book-open"
@@ -89,10 +89,10 @@ export default function _layout() {
           },
           tabBarActiveTintColor: "#4A90E2",
           tabBarInactiveTintColor: "#8e8e93",
-          headerShown: route.name === "courses/index" || route.name === "resources/index",
+          headerShown: route.name === "services/index" || route.name === "resources/index",
           headerTitle:
-            route.name === "courses/index"
-              ? "Courses"
+            route.name === "services/index"
+              ? "Services"
               : route.name === "resources/index"
               ? "Video Lessons"
               : "",
@@ -149,7 +149,7 @@ export default function _layout() {
         })}
       >
         <Tabs.Screen name="index" />
-        <Tabs.Screen name="courses/index" />
+        <Tabs.Screen name="services/index" />
         <Tabs.Screen name="resources/index" />
         <Tabs.Screen name="profile/index" />
       </Tabs>

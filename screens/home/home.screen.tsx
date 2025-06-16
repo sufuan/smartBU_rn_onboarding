@@ -1,4 +1,4 @@
-import CourseCard from "@/components/cards/course.card";
+import CourseCard from "@/components/cards/service.card";
 // import GradiantText from "@/components/common/gradient.text";
 import HomeBanner from "@/components/home/home.banner";
 import WelcomeHeader from "@/components/home/welcome.header";

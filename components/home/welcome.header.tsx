@@ -1,6 +1,6 @@
 import { setAuthorizationHeader } from "@/hooks/fetch/useUser";
 import useUserData from "@/hooks/useUserData";
-import { EvilIcons, Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -10,8 +10,7 @@ import {
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
-  View,
+  View
 } from "react-native";
 import { moderateScale, scale, verticalScale } from "react-native-size-matters";
 
@@ -57,16 +56,7 @@ export default function WelcomeHeader() {
           </Pressable>
         </View>
       </View>
-      <View style={{ position: "relative" }}>
-        <TextInput
-          placeholder="Search for Topics, Courses"
-          style={styles.input}
-          placeholderTextColor="#666"
-        />
-        <Pressable style={styles.searchIcon}>
-          <EvilIcons name="search" size={scale(30)} color="blue" />
-        </Pressable>
-      </View>
+      
     </LinearGradient>
   );
 }
