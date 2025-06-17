@@ -1,4 +1,5 @@
-type onBoardingSlidesTypes = {
+// Onboarding slides for the app's welcome screens
+type OnBoardingSlidesTypes = {
   color: string;
   image: any;
   title: string;
@@ -6,162 +7,100 @@ type onBoardingSlidesTypes = {
   subTitle: string;
 };
 
+// User details, including subscription and slot history
 type UserType = {
   id: string;
   name: string;
   email: string;
-  password: string;
-  phone_number: string;
-  avatar: string;
-  stripeCustomerId: string;
-  githubUserName: string;
-  role: string;
-  pushToken?: string;
+  googleId?: string; // For Google Login
+  phone_number?: string;
+  avatar?: string;
+  stripeCustomerId?: string; // For Stripe payments
+  role: 'User' | 'Admin'; // Simplified roles
+  pushToken?: string; // For push notifications
   verified: boolean;
-  reviews: ReviewsType[];
-  orders: OrderType[];
-  reviewsReplies: ReviewsType[];
-  Notification: NotificationType[];
-  Tickets: TicketsTypes[];
+  slots: SlotType[]; // Booked slots
+  notifications: NotificationType[];
+  tickets: TicketType[];
   createdAt: Date;
   updatedAt: Date;
 };
 
-type ReviewsType = {
+// Washing machine details
+type MachineType = {
   id: string;
-  user: UserType;
-  userId: string;
-  courseId: string;
-  rating: number;
-  replies: any[];
-  comment: string;
-  createdAt: any;
-  updatedAt: any;
-};
-
-type OrderType = {
-  id: string;
-  userId: string;
-  payment_info: string | null;
-  courseId: string;
-  createdAt: any;
-  updatedAt: any;
-};
-
-type AnswerType = {
-  id: string;
-  userId: string;
-  questionId: string;
-  answer: string;
-  user: UserType;
-  image?: string;
+  machineId: string; // e.g., "washer1"
+  qrCode: string; // URL or data for permanent QR code (e.g., "machineId:washer1")
+  status: 'Available' | 'InUse' | 'Offline'; // Machine status
+  location?: string; // Optional, e.g., "Laundromat A"
   createdAt: Date;
   updatedAt: Date;
 };
 
-type BenefitsType = {
-  id: string;
-  title: string;
-  courseId: string;
-  createdAt: any;
-  updatedAt: any;
-};
-
-type QuestionType = {
+// 30-minute slot for machine usage
+type SlotType = {
   id: string;
   userId: string;
   user: UserType;
-  contentId: string;
-  question: string;
-  image?: string;
-  answers: AnswerType[];
+  machineId: string;
+  machine: MachineType;
+  slotTime: Date; // Start time (e.g., 2025-06-17T10:00:00Z)
+  duration: number; // Duration in milliseconds (e.g., 30 * 60 * 1000)
+  authCode: string; // One-time auth code (e.g., "ABC123")
+  status: 'Reserved' | 'Completed' | 'Cancelled';
   createdAt: Date;
   updatedAt: Date;
 };
 
-type QuestionType = {
-  id: string;
-  userId: string;
-  user: UserType;
-  contentId: string;
-  question: string;
-  image?: string;
-  answers: AnswerType[];
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-type CourseDataType = {
-  id: string;
-  title: string;
-  videoUrl: string;
-  conversationId?: string;
-  videoSection: string;
-  questions: QuestionType[];
-  description: string;
-  videoLength: string;
-  links: any;
-  videoPlayer: string | null;
-  courseId: string;
-};
-
+// Notification for slot status or issues
 type NotificationType = {
   id: string;
   title: string;
   message: string;
-  status: string;
-  user?: UserType;
-  creatorId: string;
-  receiverId: string | null;
-  redirect_link: string | null;
+  status: 'Unread' | 'Read';
+  userId: string;
+  user: UserType;
+  redirect_link?: string; // Optional link to slot or ticket
+  slotId?: string; // Link to slot (e.g., for "Cycle finished")
+  ticketId?: string; // Link to ticket
   createdAt: Date;
   updatedAt: Date;
 };
 
-type TicketReplies = {
+// Support ticket for machine issues
+type TicketType = {
+  id: string;
+  creatorId: string;
+  user: UserType;
+  ticketTitle: string;
+  details: string;
+  status: 'Pending' | 'Resolved' | 'Closed';
+  replies: TicketReplyType[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+// Reply to a support ticket
+type TicketReplyType = {
   id: string;
   ticketId: string;
+  ticket: TicketType;
   reply: string;
+  userId: string;
   user: UserType;
-  replyId: string;
-  createdAt: Date | null;
-  updatedAt: Date | null;
-};
-
-type TicketsTypes = {
-  id: string;
-  creatorId: string;
-  ticketTitle: string;
-  reply: TicketReplies[];
-  details: string;
-  status: string;
   createdAt: Date;
   updatedAt: Date;
 };
 
-type CourseType = {
+// Usage log for auditing (e.g., proxy detection)
+type UsageLogType = {
   id: string;
-  name: string;
-  description: string;
-  categories: string | null;
-  price: number;
-  estimatedPrice: number | null;
-  thumbnail: string;
-  tags: string;
-  level: string;
-  demoUrl: string;
-  slug: string;
-  lessons: number;
-  payment_id: string | null;
-  ratings: number;
-  purchased: number;
-  iosProductId?: string;
-  androidProductId?: string;
-  benefits: BenefitsType[];
-  prerequisites: BenefitsType[];
-  courseData: CourseDataType[];
-  reviews: ReviewsType[];
-  orders: OrderType[];
-  createdAt: any;
-  updatedAt: any;
+  userId: string;
+  user: UserType;
+  machineId: string;
+  machine: MachineType;
+  slotId: string;
+  slot: SlotType;
+  action: 'Booked' | 'Started' | 'Completed' | 'Cancelled';
+  createdAt: Date;
 };

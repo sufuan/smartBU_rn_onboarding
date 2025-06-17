@@ -17,11 +17,32 @@ export const isAuthenticated = async (req, res, next) => {
           id: userData.id,
         },
         include: {
-          orders: true,
-          reviews: true,
-          Tickets: true,
+          slots: {
+            include: {
+              machine: true,
+            },
+          },
+          notifications: true,
+          tickets: {
+            include: {
+              replies: true,
+            },
+          },
+          usageLogs: {
+            include: {
+              machine: true,
+              slot: true,
+            },
+          },
         },
       });
+
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: "User not found. Please login again.",
+        });
+      }
 
       // Attach the user data to the request object
       req.user = user;

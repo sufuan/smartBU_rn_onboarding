@@ -7,220 +7,130 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model ReviewReplies {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  reviewId  String   @db.ObjectId
-  review    Reviews  @relation(fields: [reviewId], references: [id])
-  userId    String   @db.ObjectId
-  user      User     @relation(fields: [userId], references: [id])
-  reply     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Reviews {
-  id        String          @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String          @db.ObjectId
-  user      User            @relation(fields: [userId], references: [id])
-  courseId  String          @db.ObjectId
-  course    Course          @relation(fields: [courseId], references: [id])
-  rating    Float           @default(0)
-  comment   String
-  replies   ReviewReplies[]
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-}
-
-model CourseBenefits {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  title     String
-  course    Course   @relation(fields: [courseId], references: [id])
-  courseId  String   @db.ObjectId
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model CoursePrerequisites {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  title     String
-  course    Course   @relation(fields: [courseId], references: [id])
-  courseId  String   @db.ObjectId
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model CourseLinks {
-  id           String     @id @default(auto()) @map("_id") @db.ObjectId
-  contentId    String     @db.ObjectId
-  course       CourseData @relation(fields: [contentId], references: [id])
-  title        String
-  url          String
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  courseDataId String?    @db.ObjectId
-}
-
-model CourseQuestionAnswers {
-  id         String          @id @default(auto()) @map("_id") @db.ObjectId
-  questionId String          @db.ObjectId
-  question   CourseQuestions @relation(fields: [questionId], references: [id])
-  answer     String
-  userId     String          @db.ObjectId
-  user       User            @relation(fields: [userId], references: [id])
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-}
-
-model CourseQuestions {
-  id           String                  @id @default(auto()) @map("_id") @db.ObjectId
-  userId       String                  @db.ObjectId
-  user         User                    @relation(fields: [userId], references: [id])
-  contentId    String                  @db.ObjectId
-  content      CourseData              @relation(fields: [contentId], references: [id])
-  question     String
-  image        String?
-  answers      CourseQuestionAnswers[]
-  createdAt    DateTime                @default(now())
-  updatedAt    DateTime                @updatedAt
-  Notification Notification[]
-}
-
-model CourseData {
-  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
-  title                String
-  videoUrl             String
-  videoSection         String
-  description          String
-  videoLength          String
-  videoPlayer          String?
-  links                CourseLinks[]
-  questions            CourseQuestions[]
-  courseId             String                 @db.ObjectId
-  Course               Course                 @relation(fields: [courseId], references: [id])
-  VideoCompleteHistory VideoCompleteHistory[]
-}
-
-model Course {
-  id               String                @id @default(auto()) @map("_id") @db.ObjectId
-  name             String
-  description      String
-  categories       String?
-  price            Float
-  estimatedPrice   Float?
-  thumbnail        String
-  tags             String
-  level            String
-  demoUrl          String
-  slug             String                @unique
-  lessons          Float                 @default(0)
-  payment_id       String?
-  benefits         CourseBenefits[]
-  prerequisites    CoursePrerequisites[]
-  courseData       CourseData[]
-  reviews          Reviews[]
-  orders           Orders[]
-  iosProductId     String?
-  androidProductId String?
-  visibility       Boolean?
-  ratings          Float                 @default(0)
-  purchased        Float                 @default(0)
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
-}
-
 enum Role {
   User
   Admin
-  Modaretor
 }
 
-model Orders {
-  id             String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId         String   @db.ObjectId
-  user           User     @relation(fields: [userId], references: [id])
-  payment_info   String?
-  product_id     String?
-  transaction_id String?
-  androidOrderId String?
-  purchaseToken  String?
-  courseId       String   @db.ObjectId
-  course         Course   @relation(fields: [courseId], references: [id])
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+enum SlotStatus {
+  Reserved
+  Completed
+  Cancelled
 }
 
-model Notification {
-  id            String           @id @default(auto()) @map("_id") @db.ObjectId
-  title         String
-  message       String
-  status        String           @default("Unread")
-  creatorId     String           @db.ObjectId
-  receiverId    String?          @map("receiverId")
-  redirect_link String?
-  questionId    String?          @db.ObjectId
-  question      CourseQuestions? @relation(fields: [questionId], references: [id])
-  ticketId      String?          @db.ObjectId
-  ticket        Tickets?         @relation(fields: [ticketId], references: [id])
-  user          User             @relation(fields: [creatorId], references: [id])
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+enum MachineStatus {
+  Available
+  InUse
+  Offline
+}
+
+enum NotificationStatus {
+  Unread
+  Read
+}
+
+enum TicketStatus {
+  Pending
+  Resolved
+  Closed
 }
 
 model User {
-  id                   String                  @id @default(auto()) @map("_id") @db.ObjectId
-  name                 String
-  email                String                  @unique
-  password             String?
-  phone_number         Float?
-  avatar               String?
-  stripeCustomerId     String?
-  githubUserName       String?
-  pushToken            String?
-  role                 Role                    @default(User)
-  verified             Boolean                 @default(false)
-  reviews              Reviews[]
-  reviewsReplies       ReviewReplies[]
-  questions            CourseQuestions[]
-  questionAnswers      CourseQuestionAnswers[]
-  orders               Orders[]
-  Tickets              Tickets[]
-  TicketReply          TicketReply[]
-  createdAt            DateTime                @default(now())
-  updatedAt            DateTime                @updatedAt
-  Notification         Notification[]
-  VideoCompleteHistory VideoCompleteHistory[]
+  id               String            @id @default(auto()) @map("_id") @db.ObjectId
+  name             String
+  email            String            @unique
+  googleId         String?           // For Google Login
+  phone_number     String?           // Changed to String for flexibility
+  avatar           String?
+  stripeCustomerId String?           // For Stripe payments
+  role             Role              @default(User)
+  pushToken        String?           // For push notifications
+  verified         Boolean           @default(false)
+  slots            Slot[]            // Booked slots
+  notifications    Notification[]    // Received notifications
+  tickets          Ticket[]          // Created tickets
+  ticketReplies    TicketReply[]     // Replies to tickets
+  usageLogs        UsageLog[]        // Usage history for auditing
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+}
+
+model Machine {
+  id          String         @id @default(auto()) @map("_id") @db.ObjectId
+  machineId   String         @unique // e.g., "washer1"
+  qrCode      String         // QR code data (e.g., "machineId:washer1")
+  status      MachineStatus  @default(Available)
+  location    String?        // Optional, e.g., "Laundromat A"
+  slots       Slot[]         // Slots booked for this machine
+  usageLogs   UsageLog[]     // Usage history
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model Slot {
+  id            String         @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String         @db.ObjectId
+  user          User           @relation(fields: [userId], references: [id])
+  machineId     String         @db.ObjectId
+  machine       Machine        @relation(fields: [machineId], references: [id])
+  slotTime      DateTime       // Start time (e.g., 2025-06-17T10:00:00Z)
+  duration      Int            // Duration in milliseconds (e.g., 1800000)
+  authCode      String         // One-time auth code (e.g., "ABC123")
+  status        SlotStatus     @default(Reserved)
+  notifications Notification[] // Related notifications
+  usageLogs     UsageLog[]     // Usage history
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Notification {
+  id            String              @id @default(auto()) @map("_id") @db.ObjectId
+  title         String
+  message       String
+  status        NotificationStatus  @default(Unread)
+  userId        String              @db.ObjectId
+  user          User                @relation(fields: [userId], references: [id])
+  slotId        String?             @db.ObjectId
+  slot          Slot?               @relation(fields: [slotId], references: [id])
+  ticketId      String?             @db.ObjectId
+  ticket        Ticket?             @relation(fields: [ticketId], references: [id])
+  redirect_link String?             // Optional link to slot or ticket
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+}
+
+model Ticket {
+  id          String        @id @default(auto()) @map("_id") @db.ObjectId
+  creatorId   String        @db.ObjectId
+  user        User          @relation(fields: [creatorId], references: [id])
+  ticketTitle String
+  details     String
+  status      TicketStatus  @default(Pending)
+  replies     TicketReply[] // Replies to the ticket
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  notifications Notification[] // Related notifications
 }
 
 model TicketReply {
-  id        String    @id @default(auto()) @map("_id") @db.ObjectId
-  ticketId  String    @db.ObjectId
-  tickets   Tickets   @relation(fields: [ticketId], references: [id])
-  reply     String
-  replyId   String    @db.ObjectId
-  user      User      @relation(fields: [replyId], references: [id])
-  createdAt DateTime? @default(now())
-  updatedAt DateTime? @updatedAt
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId    String     @db.ObjectId
+  ticket      Ticket     @relation(fields: [ticketId], references: [id])
+  reply       String
+  userId      String     @db.ObjectId
+  user        User       @relation(fields: [userId], references: [id])
+  createdAt   DateTime?  @default(now())
+  updatedAt   DateTime?  @updatedAt
 }
 
-model Tickets {
-  id           String         @id @default(auto()) @map("_id") @db.ObjectId
-  creatorId    String         @db.ObjectId
-  user         User           @relation(fields: [creatorId], references: [id])
-  ticketTitle  String
-  details      String
-  reply        TicketReply[]
-  status       String         @default("Pending")
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  Notification Notification[]
-}
-
-model VideoCompleteHistory {
-  id        String     @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String     @db.ObjectId
-  user      User       @relation(fields: [userId], references: [id])
-  contentId String     @db.ObjectId
-  content   CourseData @relation(fields: [contentId], references: [id])
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+model UsageLog {
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String     @db.ObjectId
+  user        User       @relation(fields: [userId], references: [id])
+  machineId   String     @db.ObjectId
+  machine     Machine    @relation(fields: [machineId], references: [id])
+  slotId      String     @db.ObjectId
+  slot        Slot       @relation(fields: [slotId], references: [id])
+  action      String     // e.g., "Booked", "Started", "Completed", "Cancelled"
+  createdAt   DateTime   @default(now())
 }

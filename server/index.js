@@ -310,6 +310,107 @@ app.post("/create-free-order", isAuthenticated, async (req, res) => {
 
 
 
+// Get all machines
+app.get("/api/machines", async (req, res) => {
+  try {
+    const machines = await prisma.machine.findMany({
+      orderBy: {
+        machineId: 'asc'
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      machines,
+    });
+  } catch (error) {
+    console.error("Get machines error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch machines",
+      error: error.message,
+    });
+  }
+});
+
+// Get available slots for a specific machine
+app.get("/api/slots", async (req, res) => {
+  try {
+    const { machineId } = req.query;
+
+    if (!machineId) {
+      return res.status(400).json({
+        success: false,
+        message: "Machine ID is required"
+      });
+    }
+
+    // Get current time and next 24 hours
+    const now = new Date();
+    const next24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    // Find existing slots for this machine in the next 24 hours
+    const existingSlots = await prisma.slot.findMany({
+      where: {
+        machineId: machineId,
+        slotTime: {
+          gte: now,
+          lte: next24Hours
+        },
+        status: {
+          in: ['Reserved', 'Completed'] // Don't show cancelled slots as occupied
+        }
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    // Generate available 30-minute slots for the next 24 hours
+    const availableSlots = [];
+    const slotDuration = 30 * 60 * 1000; // 30 minutes in milliseconds
+
+    // Start from the next 30-minute interval
+    const startTime = new Date(Math.ceil(now.getTime() / slotDuration) * slotDuration);
+
+    for (let time = startTime; time < next24Hours; time = new Date(time.getTime() + slotDuration)) {
+      // Check if this slot is already booked
+      const isBooked = existingSlots.some(slot =>
+        slot.slotTime.getTime() === time.getTime()
+      );
+
+      if (!isBooked) {
+        availableSlots.push({
+          slotTime: time,
+          duration: slotDuration,
+          status: 'Available',
+          machineId: machineId
+        });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      slots: availableSlots,
+      bookedSlots: existingSlots
+    });
+
+  } catch (error) {
+    console.error("Get slots error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch slots",
+      error: error.message,
+    });
+  }
+});
+
 // Start Server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", async () => {

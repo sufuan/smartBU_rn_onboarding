@@ -1,22 +1,22 @@
 import { useTheme } from "@/context/theme.context";
 import useUser from "@/hooks/fetch/useUser";
 import {
-  fontSizes
+    fontSizes
 } from "@/themes/app.constant";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import axios from "axios";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Pressable,
+    RefreshControl,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
@@ -33,10 +33,10 @@ interface MachineWithSlots extends MachineType {
   loading: boolean;
 }
 
-export default function ServicesScreen() {
+export default function LaundryScreen() {
   const { theme } = useTheme();
   const { user } = useUser();
-
+  
   const [machines, setMachines] = useState<MachineWithSlots[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -69,8 +69,7 @@ export default function ServicesScreen() {
     try {
       console.log('🔄 Fetching machines...');
       setError(null);
-      // Don't set auth header for public endpoints
-
+      
       console.log('🌐 Server URI:', process.env.EXPO_PUBLIC_SERVER_URI);
       const response = await axios.get(
         `${process.env.EXPO_PUBLIC_SERVER_URI}/api/machines`
@@ -83,10 +82,10 @@ export default function ServicesScreen() {
           availableSlots: [],
           loading: true,
         }));
-
+        
         console.log('🏭 Machines data:', machinesData.length, 'machines');
         setMachines(machinesData);
-
+        
         // Fetch slots for each machine
         console.log('🔄 Fetching slots for', machinesData.length, 'machines');
         await Promise.all(
@@ -96,17 +95,17 @@ export default function ServicesScreen() {
               const slotsResponse = await axios.get(
                 `${process.env.EXPO_PUBLIC_SERVER_URI}/api/slots?machineId=${machine.id}`
               );
-
+              
               console.log('✅ Slots response for', machine.machineId, ':', slotsResponse.data);
               if (slotsResponse.data.success) {
                 const availableSlots = slotsResponse.data.slots.map((slot: any) => ({
                   ...slot,
                   slotTime: new Date(slot.slotTime),
                 }));
-
+                
                 console.log('📅 Available slots for', machine.machineId, ':', availableSlots.length);
-                setMachines(prev => prev.map(m =>
-                  m.id === machine.id
+                setMachines(prev => prev.map(m => 
+                  m.id === machine.id 
                     ? { ...m, availableSlots, loading: false }
                     : m
                 ));
@@ -114,8 +113,8 @@ export default function ServicesScreen() {
             } catch (error: any) {
               console.error(`❌ Error fetching slots for machine ${machine.machineId}:`, error);
               console.error("Slot error details:", error.response?.data || error.message);
-              setMachines(prev => prev.map(m =>
-                m.id === machine.id
+              setMachines(prev => prev.map(m => 
+                m.id === machine.id 
                   ? { ...m, availableSlots: [], loading: false }
                   : m
               ));
@@ -147,8 +146,7 @@ export default function ServicesScreen() {
   // Handle slot booking
   const handleBookSlot = useCallback((machineId: string, slotTime: Date) => {
     if (!checkSubscription()) return;
-
-    // For now, show an alert since slot-booking route doesn't exist yet
+    
     Alert.alert(
       "Book Slot",
       `Would you like to book this slot?\n\nMachine: ${machineId}\nTime: ${formatTime(slotTime)}`,
@@ -160,7 +158,6 @@ export default function ServicesScreen() {
         {
           text: "Book Now",
           onPress: () => {
-            // TODO: Implement actual booking logic
             Alert.alert("Success", "Slot booking functionality will be implemented soon!");
           },
         },
@@ -221,7 +218,7 @@ export default function ServicesScreen() {
         <Text style={[styles.slotsTitle, { color: theme.dark ? "#fff" : "#000" }]}>
           Available Slots
         </Text>
-
+        
         {machine.loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color="#4A90E2" />
@@ -264,36 +261,15 @@ export default function ServicesScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.dark ? "#131313" : "#fff" }]}>
       <StatusBar barStyle={theme.dark ? "light-content" : "dark-content"} />
-
-      {/* Temporary API Test - Remove this after debugging */}
-      <View style={{ padding: 10, backgroundColor: '#f0f0f0', margin: 10, borderRadius: 5 }}>
-        <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 5 }}>API Debug Test</Text>
-        <Text style={{ fontSize: 12, color: '#666' }}>Server URI: {process.env.EXPO_PUBLIC_SERVER_URI || 'Not set'}</Text>
-        <Pressable
-          style={{ backgroundColor: '#4A90E2', padding: 8, borderRadius: 4, marginTop: 5 }}
-          onPress={async () => {
-            try {
-              console.log('🧪 Manual API test...');
-              const response = await axios.get(`${process.env.EXPO_PUBLIC_SERVER_URI}/api/machines`);
-              console.log('✅ Manual test result:', response.data);
-              Alert.alert('API Test', `Success! Found ${response.data.machines?.length || 0} machines`);
-            } catch (error: any) {
-              console.error('❌ Manual test failed:', error);
-              Alert.alert('API Test Failed', error.message);
-            }
-          }}
-        >
-          <Text style={{ color: 'white', textAlign: 'center', fontSize: 12 }}>Test API</Text>
-        </Pressable>
-      </View>
-
+      
       <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color={theme.dark ? "#fff" : "#000"} />
+        </Pressable>
         <Text style={[styles.title, { color: theme.dark ? "#fff" : "#000" }]}>
           Washing Machines
         </Text>
-        <Text style={[styles.subtitle, { color: theme.dark ? "#ccc" : "#666" }]}>
-          Book your 30-minute slots
-        </Text>
+        <View style={{ width: 24 }} />
       </View>
 
       {error ? (
@@ -340,16 +316,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: scale(20),
-    paddingVertical: verticalScale(20),
+    paddingVertical: verticalScale(15),
+  },
+  backButton: {
+    padding: scale(8),
   },
   title: {
-    fontSize: fontSizes.FONT28,
+    fontSize: fontSizes.FONT20,
     fontWeight: 'bold',
-    marginBottom: verticalScale(5),
-  },
-  subtitle: {
-    fontSize: fontSizes.FONT16,
   },
   loadingContainer: {
     flex: 1,
