@@ -58,12 +58,12 @@ export default function LaundryScreen() {
 
       console.log('✅ Machines response:', response.data);
       if (response.data.success) {
-        const machinesData: MachineWithSlots[] = response.data.machines.map((machine: MachineType) => ({
+        const machinesData: MachineWithSlots[] = response.data.machines.map((machine: any) => ({
           ...machine,
           availableSlots: [],
           loading: true,
         }));
-        
+
         console.log('🏭 Machines data:', machinesData.length, 'machines');
         setMachines(machinesData);
         
