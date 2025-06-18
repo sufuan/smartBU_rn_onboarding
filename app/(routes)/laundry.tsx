@@ -42,27 +42,8 @@ export default function LaundryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Check subscription status
-  const checkSubscription = useCallback(() => {
-    if (!user?.stripeCustomerId) {
-      Alert.alert(
-        "Subscription Required",
-        "You need an active subscription to book washing machine slots.",
-        [
-          {
-            text: "Subscribe Now",
-            onPress: () => router.push("/(routes)/checkout"),
-          },
-          {
-            text: "Cancel",
-            style: "cancel",
-          },
-        ]
-      );
-      return false;
-    }
-    return true;
-  }, [user?.stripeCustomerId]);
+  // Note: Subscription check is now handled at the home screen level
+  // Users can only reach this screen if they have an active subscription
 
   // Fetch machines from API
   const fetchMachines = useCallback(async () => {
@@ -145,8 +126,6 @@ export default function LaundryScreen() {
 
   // Handle slot booking
   const handleBookSlot = useCallback((machineId: string, slotTime: Date) => {
-    if (!checkSubscription()) return;
-    
     Alert.alert(
       "Book Slot",
       `Would you like to book this slot?\n\nMachine: ${machineId}\nTime: ${formatTime(slotTime)}`,
@@ -163,7 +142,7 @@ export default function LaundryScreen() {
         },
       ]
     );
-  }, [checkSubscription]);
+  }, []);
 
   // Format time for display
   const formatTime = (date: Date) => {

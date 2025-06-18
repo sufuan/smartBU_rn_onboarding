@@ -5,7 +5,6 @@ import {
 } from "@/themes/app.constant";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import axios from "axios";
-import { router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -42,27 +41,8 @@ export default function ServicesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Check subscription status
-  const checkSubscription = useCallback(() => {
-    if (!user?.stripeCustomerId) {
-      Alert.alert(
-        "Subscription Required",
-        "You need an active subscription to book washing machine slots.",
-        [
-          {
-            text: "Subscribe Now",
-            onPress: () => router.push("/(routes)/checkout"),
-          },
-          {
-            text: "Cancel",
-            style: "cancel",
-          },
-        ]
-      );
-      return false;
-    }
-    return true;
-  }, [user?.stripeCustomerId]);
+  // Note: Subscription check is now handled at the home screen level
+  // Users can only reach this screen if they have an active subscription
 
   // Fetch machines from API
   const fetchMachines = useCallback(async () => {
@@ -146,9 +126,6 @@ export default function ServicesScreen() {
 
   // Handle slot booking
   const handleBookSlot = useCallback((machineId: string, slotTime: Date) => {
-    if (!checkSubscription()) return;
-
-    // For now, show an alert since slot-booking route doesn't exist yet
     Alert.alert(
       "Book Slot",
       `Would you like to book this slot?\n\nMachine: ${machineId}\nTime: ${formatTime(slotTime)}`,
@@ -166,7 +143,7 @@ export default function ServicesScreen() {
         },
       ]
     );
-  }, [checkSubscription]);
+  }, []);
 
   // Format time for display
   const formatTime = (date: Date) => {
@@ -265,27 +242,7 @@ export default function ServicesScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.dark ? "#131313" : "#fff" }]}>
       <StatusBar barStyle={theme.dark ? "light-content" : "dark-content"} />
 
-      {/* Temporary API Test - Remove this after debugging */}
-      <View style={{ padding: 10, backgroundColor: '#f0f0f0', margin: 10, borderRadius: 5 }}>
-        <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 5 }}>API Debug Test</Text>
-        <Text style={{ fontSize: 12, color: '#666' }}>Server URI: {process.env.EXPO_PUBLIC_SERVER_URI || 'Not set'}</Text>
-        <Pressable
-          style={{ backgroundColor: '#4A90E2', padding: 8, borderRadius: 4, marginTop: 5 }}
-          onPress={async () => {
-            try {
-              console.log('🧪 Manual API test...');
-              const response = await axios.get(`${process.env.EXPO_PUBLIC_SERVER_URI}/api/machines`);
-              console.log('✅ Manual test result:', response.data);
-              Alert.alert('API Test', `Success! Found ${response.data.machines?.length || 0} machines`);
-            } catch (error: any) {
-              console.error('❌ Manual test failed:', error);
-              Alert.alert('API Test Failed', error.message);
-            }
-          }}
-        >
-          <Text style={{ color: 'white', textAlign: 'center', fontSize: 12 }}>Test API</Text>
-        </Pressable>
-      </View>
+
 
       <View style={styles.header}>
         <Text style={[styles.title, { color: theme.dark ? "#fff" : "#000" }]}>

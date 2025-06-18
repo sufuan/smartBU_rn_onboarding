@@ -1,20 +1,21 @@
 import HomeBanner from "@/components/home/home.banner";
 import WelcomeHeader from "@/components/home/welcome.header";
 import { useTheme } from "@/context/theme.context";
+import useUser from "@/hooks/fetch/useUser";
 import {
-  fontSizes
+    fontSizes
 } from "@/themes/app.constant";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React from "react";
 import {
-  Alert,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  View
+    Alert,
+    FlatList,
+    Pressable,
+    StyleSheet,
+    Text,
+    View
 } from "react-native";
 import { scale, verticalScale } from "react-native-size-matters";
 
@@ -30,6 +31,7 @@ interface ServiceType {
 
 export default function HomeScreen() {
   const { theme } = useTheme();
+  const { user } = useUser();
 
   const services: ServiceType[] = [
     {
@@ -61,7 +63,12 @@ export default function HomeScreen() {
     },
   ];
 
-  // Handle service navigation
+  // Check if user has active subscription
+  const hasActiveSubscription = () => {
+    return user?.stripeCustomerId && user.stripeCustomerId.trim() !== '';
+  };
+
+  // Handle service navigation with subscription check
   const handleServicePress = (service: ServiceType) => {
     if (!service.available) {
       // Show coming soon message for unavailable services
@@ -73,10 +80,21 @@ export default function HomeScreen() {
       return;
     }
 
+    // Check subscription status for available services
+    if (!hasActiveSubscription()) {
+      // User doesn't have active subscription - navigate to no-package screen with service name
+      router.push({
+        pathname: "/(routes)/no-package" as any,
+        params: { serviceName: service.title }
+      });
+      return;
+    }
+
+    // User has active subscription - navigate to service
     if (service.route === '/(routes)/laundry') {
-      router.push('/laundry' as any);
+      router.push("/(routes)/laundry" as any);
     } else {
-      // For other services, show coming soon
+      // For other services that might be implemented later
       Alert.alert(
         "Coming Soon",
         `${service.title} will be available soon!`,
