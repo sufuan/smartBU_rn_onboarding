@@ -15,7 +15,7 @@ async function generateQRCodes(): Promise<void> {
     console.log('🔄 Starting QR code generation for washing machines...');
 
     // Create qrcodes directory if it doesn't exist
-    const qrCodesDir = path.join(__dirname, 'qrcodes');
+    const qrCodesDir = path.join(__dirname, '..', 'qrcodes');
     if (!fs.existsSync(qrCodesDir)) {
       fs.mkdirSync(qrCodesDir, { recursive: true });
       console.log(`📁 Created directory: ${qrCodesDir}`);
@@ -107,7 +107,7 @@ async function verifyQRCodes(): Promise<void> {
   try {
     console.log('\n🔍 Verifying generated QR codes...');
 
-    const qrCodesDir = path.join(__dirname, 'qrcodes');
+    const qrCodesDir = path.join(__dirname, '..', 'qrcodes');
     
     if (!fs.existsSync(qrCodesDir)) {
       console.log('⚠️ QR codes directory not found');

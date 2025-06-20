@@ -45,12 +45,13 @@ interface BookingResponse {
 
 export default function SlotBookingScreen() {
   const { theme } = useTheme();
-  const { user } = useUser();
+  const { user, refetch: refetchUser, loader: userLoading } = useUser();
   const params = useLocalSearchParams<BookingParams>();
-  
+
   const [loading, setLoading] = useState(false);
   const [machineDetails, setMachineDetails] = useState<MachineType | null>(null);
   const [fetchingMachine, setFetchingMachine] = useState(true);
+  const [checkingSubscription, setCheckingSubscription] = useState(true);
 
   // Parse parameters
   const machineId = params.machineId;
@@ -77,6 +78,60 @@ export default function SlotBookingScreen() {
       setFetchingMachine(false);
     }
   }, [machineId]);
+
+  // Check subscription when user data is available
+  useEffect(() => {
+    const checkSubscription = () => {
+      // Don't check if we're already checking
+      if (checkingSubscription) {
+        return;
+      }
+
+      // If no user data, wait a bit more
+      if (!user) {
+        console.log('⏳ SlotBookingScreen: No user data yet, will check again...');
+        return;
+      }
+
+      console.log('🔍 SlotBookingScreen: Starting subscription check');
+      setCheckingSubscription(true);
+
+      console.log('🔍 SlotBookingScreen: User data available, checking subscription:', {
+        userId: user.id,
+        email: user.email,
+        stripeCustomerId: user.stripeCustomerId,
+        hasSubscription: hasActiveSubscription()
+      });
+
+      // Small delay to ensure UI updates
+      setTimeout(() => {
+        if (!hasActiveSubscription()) {
+          console.log('❌ SlotBookingScreen: No subscription, showing alert');
+          Alert.alert(
+            "Subscription Required",
+            "You need an active subscription to book washing machine slots.",
+            [
+              {
+                text: "Subscribe Now",
+                onPress: () => router.replace("/(routes)/checkout"),
+              },
+              {
+                text: "Go Back",
+                onPress: () => router.back(),
+                style: "cancel",
+              },
+            ]
+          );
+        } else {
+          console.log('✅ SlotBookingScreen: Subscription confirmed');
+        }
+
+        setCheckingSubscription(false);
+      }, 500);
+    };
+
+    checkSubscription();
+  }, [user]); // Only depend on user data
 
   useEffect(() => {
     if (machineId) {
@@ -112,23 +167,34 @@ export default function SlotBookingScreen() {
 
   // Handle booking confirmation
   const handleConfirmBooking = async () => {
-    if (!hasActiveSubscription()) {
-      Alert.alert(
-        "Subscription Required",
-        "You need an active subscription to book washing machine slots.",
-        [
-          {
-            text: "Subscribe Now",
-            onPress: () => router.push("/(routes)/checkout"),
-          },
-          {
-            text: "Cancel",
-            style: "cancel",
-          },
-        ]
-      );
-      return;
-    }
+    // Refresh user data before booking
+    await refetchUser();
+
+    // Small delay to ensure user data is updated
+    setTimeout(async () => {
+      if (!hasActiveSubscription()) {
+        Alert.alert(
+          "Subscription Required",
+          "You need an active subscription to book washing machine slots.",
+          [
+            {
+              text: "Subscribe Now",
+              onPress: () => router.push("/(routes)/checkout"),
+            },
+            {
+              text: "Cancel",
+              style: "cancel",
+            },
+          ]
+        );
+        return;
+      }
+
+      await proceedWithBooking();
+    }, 300);
+  };
+
+  const proceedWithBooking = async () => {
 
     if (!user?.id || !machineId) {
       Alert.alert("Error", "Missing required information for booking.");
@@ -173,6 +239,7 @@ export default function SlotBookingScreen() {
                 router.push({
                   pathname: "/(routes)/control" as any,
                   params: {
+                    userId: user.id,
                     authCode,
                     machineId: bookedMachineId,
                     slotTime: bookedSlotTime,
@@ -212,6 +279,20 @@ export default function SlotBookingScreen() {
   const handleGoBack = () => {
     router.back();
   };
+
+  if (checkingSubscription || !user) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.dark ? "#131313" : "#fff" }]}>
+        <StatusBar barStyle={theme.dark ? "light-content" : "dark-content"} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4A90E2" />
+          <Text style={[styles.loadingText, { color: theme.dark ? "#ccc" : "#666" }]}>
+            {!user ? "Loading user data..." : "Checking subscription..."}
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (fetchingMachine) {
     return (

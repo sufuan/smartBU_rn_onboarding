@@ -14,7 +14,7 @@ import {
     View,
 } from "react-native";
 import { scale } from "react-native-size-matters";
-import { Overlay } from "./Overlay";
+import Overlay from "./Overlay";
 
 export default function Scanner() {
   const qrLock = useRef(false);

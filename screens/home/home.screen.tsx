@@ -31,7 +31,7 @@ interface ServiceType {
 
 export default function HomeScreen() {
   const { theme } = useTheme();
-  const { user } = useUser();
+  const { user, refetch: refetchUser, loader } = useUser();
 
   const services: ServiceType[] = [
     {
@@ -65,7 +65,19 @@ export default function HomeScreen() {
 
   // Check if user has active subscription
   const hasActiveSubscription = () => {
+    console.log('🔍 HomeScreen: Checking subscription for user:', {
+      id: user?.id,
+      email: user?.email,
+      stripeCustomerId: user?.stripeCustomerId,
+      hasSubscription: user?.stripeCustomerId ? 'YES' : 'NO'
+    });
     return user?.stripeCustomerId && user.stripeCustomerId.trim() !== '';
+  };
+
+  // Manual refresh function for testing
+  const handleRefreshUser = async () => {
+    console.log('🔄 HomeScreen: Manual refresh triggered');
+    await refetchUser();
   };
 
   // Handle service navigation with subscription check
@@ -149,8 +161,33 @@ export default function HomeScreen() {
             <>
               <HomeBanner />
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Our Services</Text>
-                <Text style={styles.sectionSubtitle}>Choose from our available services</Text>
+                <View style={styles.sectionTitleRow}>
+                  <View>
+                    <Text style={styles.sectionTitle}>Our Services</Text>
+                    <Text style={styles.sectionSubtitle}>Choose from our available services</Text>
+                  </View>
+                  <Pressable
+                    onPress={handleRefreshUser}
+                    style={styles.refreshButton}
+                    disabled={loader}
+                  >
+                    <Ionicons
+                      name="refresh"
+                      size={20}
+                      color={loader ? "#ccc" : "#4A90E2"}
+                    />
+                    <Text style={[styles.refreshText, { color: loader ? "#ccc" : "#4A90E2" }]}>
+                      {loader ? "Loading..." : "Refresh"}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {/* Debug Info */}
+                <View style={styles.debugInfo}>
+                  <Text style={styles.debugText}>
+                    User: {user?.email} | Subscription: {user?.stripeCustomerId ? '✅ YES' : '❌ NO'}
+                  </Text>
+                </View>
               </View>
             </>
           )}
@@ -170,6 +207,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(20),
     paddingVertical: verticalScale(15),
   },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: verticalScale(10),
+  },
   sectionTitle: {
     fontSize: fontSizes.FONT24,
     fontWeight: 'bold',
@@ -179,6 +222,32 @@ const styles = StyleSheet.create({
   sectionSubtitle: {
     fontSize: fontSizes.FONT14,
     color: '#666',
+  },
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(6),
+    backgroundColor: '#f0f8ff',
+    borderRadius: scale(20),
+    borderWidth: 1,
+    borderColor: '#4A90E2',
+  },
+  refreshText: {
+    fontSize: fontSizes.FONT12,
+    marginLeft: scale(4),
+    fontWeight: '600',
+  },
+  debugInfo: {
+    backgroundColor: '#f5f5f5',
+    padding: scale(8),
+    borderRadius: scale(6),
+    marginTop: verticalScale(5),
+  },
+  debugText: {
+    fontSize: fontSizes.FONT10,
+    color: '#666',
+    fontFamily: 'monospace',
   },
   listContainer: {
     paddingHorizontal: scale(20),

@@ -491,6 +491,139 @@ app.post("/api/book-slot", isAuthenticated as any, asyncHandler(async (req: Auth
   }
 }));
 
+// Control Machine Endpoint - Start washing cycle
+app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { userId, slotTime, machineId, authCode } = req.body;
+
+    if (!userId || !slotTime || !machineId || !authCode) {
+      return res.status(400).json({
+        error: "Missing required fields: userId, slotTime, machineId, authCode"
+      });
+    }
+
+    // Check if user has a subscription
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { stripeCustomerId: true, name: true },
+    });
+
+    if (!user?.stripeCustomerId) {
+      return res.status(403).json({
+        error: "Subscription required",
+        message: "Active subscription required to control machines"
+      });
+    }
+
+    // Parse slot time
+    const slotTimeDate = new Date(slotTime);
+    const now = new Date();
+
+    // Validate slot time is within 30 minutes of current time
+    const timeDiff = Math.abs(slotTimeDate.getTime() - now.getTime());
+    const thirtyMinutes = 30 * 60 * 1000;
+
+    if (timeDiff > thirtyMinutes) {
+      return res.status(400).json({
+        error: "Invalid slot time",
+        message: "Slot time must be within 30 minutes of current time"
+      });
+    }
+
+    // Find the slot with matching details
+    const slot = await prisma.slot.findFirst({
+      where: {
+        userId,
+        machineId,
+        slotTime: slotTimeDate,
+        authCode,
+        status: 'Reserved'
+      },
+      include: {
+        machine: true,
+        user: true
+      }
+    });
+
+    if (!slot) {
+      return res.status(401).json({
+        error: "Invalid auth code",
+        message: "No matching slot found with provided details"
+      });
+    }
+
+    // Update machine status to InUse
+    await prisma.machine.update({
+      where: { id: slot.machine.id },
+      data: { status: 'InUse' }
+    });
+
+    // Update slot status to Completed (cycle started)
+    await prisma.slot.update({
+      where: { id: slot.id },
+      data: { status: 'Completed' }
+    });
+
+    // Log the usage
+    await prisma.usageLog.create({
+      data: {
+        userId,
+        machineId: slot.machine.id,
+        slotId: slot.id,
+        action: 'Started',
+      },
+    });
+
+    // Send MQTT message to ESP32 to start the cycle
+    const mqttSuccess = sendMQTTMessage(`laundry/${slot.machine.machineId}/control`, {
+      action: 'start_cycle',
+      duration: 30, // 30 minutes
+      userId: userId,
+      slotId: slot.id,
+      timestamp: new Date().toISOString()
+    });
+
+    // Send display update
+    sendMQTTMessage(`laundry/${slot.machine.machineId}/display`, {
+      line1: "Cycle Running",
+      line2: `30:00 remaining`,
+      line3: `User: ${user.name}`,
+    });
+
+    // Create notification for cycle start
+    await prisma.notification.create({
+      data: {
+        userId,
+        slotId: slot.id,
+        title: "Cycle Started!",
+        message: `Your washing cycle on ${slot.machine.machineId} has started. It will complete in 30 minutes.`,
+        redirect_link: `/control/${slot.id}`,
+      },
+    });
+
+    console.log(`✅ Cycle started for machine ${slot.machine.machineId} by user ${user.name}`);
+    console.log(`📤 MQTT message sent: ${mqttSuccess ? 'Success' : 'Failed'}`);
+
+    res.status(200).json({
+      status: "success",
+      message: "Washing cycle started successfully",
+      slot: {
+        id: slot.id,
+        machineId: slot.machine.machineId,
+        duration: 30,
+        startTime: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ Error starting cycle:", error);
+    res.status(500).json({
+      error: "Internal server error",
+      message: "Failed to start washing cycle"
+    });
+  }
+}));
+
 // Cancel Slot Endpoint
 app.post("/api/cancel-slot", isAuthenticated as any, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {

@@ -5,7 +5,7 @@ const { width, height } = Dimensions.get("window");
 
 const scanAreaSize = 280;
 
-export const Overlay = () => {
+const Overlay = () => {
   return (
     <View
       style={[
@@ -106,3 +106,5 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 20,
   },
 });
+
+export default Overlay;

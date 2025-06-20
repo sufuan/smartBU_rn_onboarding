@@ -1,22 +1,22 @@
 import { useTheme } from "@/context/theme.context";
 import useUser from "@/hooks/fetch/useUser";
 import {
-    fontSizes
+  fontSizes
 } from "@/themes/app.constant";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import axios from "axios";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Pressable,
-    RefreshControl,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
@@ -35,25 +35,62 @@ interface MachineWithSlots extends MachineType {
 
 export default function LaundryScreen() {
   const { theme } = useTheme();
-  const { user } = useUser();
-  
+  const { user, refetch: refetchUser, loader: userLoading } = useUser();
+
   const [machines, setMachines] = useState<MachineWithSlots[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checkingSubscription, setCheckingSubscription] = useState(true);
 
-  // Note: Subscription check is now handled at the home screen level
-  // Users can only reach this screen if they have an active subscription
+  // Check if user has active subscription
+  const hasActiveSubscription = () => {
+    return user?.stripeCustomerId && user.stripeCustomerId.trim() !== '';
+  };
 
-  // Fetch machines from API
+  // Check subscription when user data is available
+  useEffect(() => {
+    // If user data is not yet available, we wait. The UI shows "Loading user data...".
+    if (!user) {
+      console.log('⏳ LaundryScreen: Waiting for user data...');
+      return; // Exit until we have user data
+    }
+
+    // Once we have user data, we start the subscription check.
+    console.log('🔍 LaundryScreen: User data found, checking subscription...');
+    
+    // The UI will show "Checking subscription..." because `checkingSubscription` is initially true.
+    const subscriptionCheckTimeout = setTimeout(() => {
+      if (hasActiveSubscription()) {
+        // If subscription is active, we stop the check and allow the component to render the machine list.
+        console.log('✅ LaundryScreen: Active subscription found.');
+        setCheckingSubscription(false);
+      } else {
+        // If no subscription, redirect to the "no-package" screen.
+        console.log('❌ LaundryScreen: No active subscription. Redirecting...');
+        router.replace({
+          pathname: "/(routes)/no-package" as any,
+          params: { serviceName: "Your Laundry" },
+        });
+      }
+    }, 500); // A small delay can prevent UI flickering.
+
+    // Cleanup function to clear the timeout if the component unmounts or `user` changes.
+    return () => clearTimeout(subscriptionCheckTimeout);
+  }, [user]); // This effect runs whenever the `user` object changes.
+
+  // Fetch machines from API with timeout and optimization
   const fetchMachines = useCallback(async () => {
     try {
       console.log('🔄 Fetching machines...');
       setError(null);
-      
+
       console.log('🌐 Server URI:', process.env.EXPO_PUBLIC_SERVER_URI);
+
+      // Add timeout to prevent long loading
       const response = await axios.get(
-        `${process.env.EXPO_PUBLIC_SERVER_URI}/api/machines`
+        `${process.env.EXPO_PUBLIC_SERVER_URI}/api/machines`,
+        { timeout: 8000 } // 8 second timeout
       );
 
       console.log('✅ Machines response:', response.data);
@@ -66,48 +103,62 @@ export default function LaundryScreen() {
 
         console.log('🏭 Machines data:', machinesData.length, 'machines');
         setMachines(machinesData);
-        
-        // Fetch slots for each machine
+
+        // Fetch slots for each machine with limited concurrency
         console.log('🔄 Fetching slots for', machinesData.length, 'machines');
-        await Promise.all(
-          machinesData.map(async (machine) => {
-            try {
-              console.log('🔄 Fetching slots for machine:', machine.machineId);
-              const slotsResponse = await axios.get(
-                `${process.env.EXPO_PUBLIC_SERVER_URI}/api/slots?machineId=${machine.id}`
-              );
-              
-              console.log('✅ Slots response for', machine.machineId, ':', slotsResponse.data);
-              if (slotsResponse.data.success) {
-                const availableSlots = slotsResponse.data.slots.map((slot: any) => ({
-                  ...slot,
-                  slotTime: new Date(slot.slotTime),
-                }));
-                
-                console.log('📅 Available slots for', machine.machineId, ':', availableSlots.length);
-                setMachines(prev => prev.map(m => 
-                  m.id === machine.id 
-                    ? { ...m, availableSlots, loading: false }
+
+        // Process machines in batches to avoid overwhelming the server
+        const batchSize = 2;
+        for (let i = 0; i < machinesData.length; i += batchSize) {
+          const batch = machinesData.slice(i, i + batchSize);
+          await Promise.all(
+            batch.map(async (machine) => {
+              try {
+                console.log('🔄 Fetching slots for machine:', machine.machineId);
+                const slotsResponse = await axios.get(
+                  `${process.env.EXPO_PUBLIC_SERVER_URI}/api/slots?machineId=${machine.id}`,
+                  { timeout: 5000 } // 5 second timeout for slots
+                );
+
+                console.log('✅ Slots response for', machine.machineId, ':', slotsResponse.data);
+                if (slotsResponse.data.success) {
+                  const availableSlots = slotsResponse.data.slots.map((slot: any) => ({
+                    ...slot,
+                    slotTime: new Date(slot.slotTime),
+                  }));
+
+                  console.log('📅 Available slots for', machine.machineId, ':', availableSlots.length);
+                  setMachines(prev => prev.map(m =>
+                    m.id === machine.id
+                      ? { ...m, availableSlots, loading: false }
+                      : m
+                  ));
+                }
+              } catch (error: any) {
+                console.error(`❌ Error fetching slots for machine ${machine.machineId}:`, error);
+                setMachines(prev => prev.map(m =>
+                  m.id === machine.id
+                    ? { ...m, availableSlots: [], loading: false }
                     : m
                 ));
               }
-            } catch (error: any) {
-              console.error(`❌ Error fetching slots for machine ${machine.machineId}:`, error);
-              console.error("Slot error details:", error.response?.data || error.message);
-              setMachines(prev => prev.map(m => 
-                m.id === machine.id 
-                  ? { ...m, availableSlots: [], loading: false }
-                  : m
-              ));
-            }
-          })
-        );
+            })
+          );
+
+          // Small delay between batches to prevent server overload
+          if (i + batchSize < machinesData.length) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+        }
       }
     } catch (error: any) {
       console.error("❌ Error fetching machines:", error);
-      console.error("Error details:", error.response?.data || error.message);
-      setError("Failed to load washing machines. Please try again.");
-      Alert.alert("Error", "Failed to load washing machines. Please check your connection and try again.");
+
+      if (error.code === 'ECONNABORTED') {
+        setError("Connection timeout. Please check your internet connection.");
+      } else {
+        setError("Failed to load washing machines. Please try again.");
+      }
     } finally {
       console.log('🏁 Fetch machines completed, setting loading to false');
       setLoading(false);
@@ -125,17 +176,52 @@ export default function LaundryScreen() {
   }, [fetchMachines]);
 
   // Handle slot booking
-  const handleBookSlot = useCallback((machineId: string, slotTime: Date, machineLocation?: string) => {
-    // Navigate to SlotBookingScreen with parameters
-    router.push({
-      pathname: "/(routes)/slot-booking" as any,
-      params: {
-        machineId: machineId,
-        slotTime: slotTime.toISOString(),
-        machineLocation: machineLocation || "Unknown Location",
-      },
-    });
-  }, []);
+  const handleBookSlot = useCallback(async (machineId: string, slotTime: Date, machineLocation?: string) => {
+    console.log('🎯 LaundryScreen: Slot booking initiated for machine:', machineId);
+
+    // Double-check subscription before booking
+    await refetchUser();
+
+    // Longer delay to ensure user data is updated
+    setTimeout(() => {
+      console.log('🔍 LaundryScreen: Checking subscription for slot booking:', {
+        userId: user?.id,
+        email: user?.email,
+        stripeCustomerId: user?.stripeCustomerId,
+        hasSubscription: hasActiveSubscription()
+      });
+
+      if (!hasActiveSubscription()) {
+        console.log('❌ LaundryScreen: No subscription for slot booking');
+        Alert.alert(
+          "Subscription Required",
+          "You need an active subscription to book washing machine slots.",
+          [
+            {
+              text: "Subscribe Now",
+              onPress: () => router.push("/(routes)/checkout"),
+            },
+            {
+              text: "Cancel",
+              style: "cancel",
+            },
+          ]
+        );
+        return;
+      }
+
+      console.log('✅ LaundryScreen: Subscription confirmed, navigating to slot booking');
+      // Navigate to SlotBookingScreen with parameters
+      router.push({
+        pathname: "/(routes)/slot-booking" as any,
+        params: {
+          machineId: machineId,
+          slotTime: slotTime.toISOString(),
+          machineLocation: machineLocation || "Unknown Location",
+        },
+      });
+    }, 500); // Increased delay
+  }, [user]);
 
   // Format time for display
   const formatTime = (date: Date) => {
@@ -215,6 +301,20 @@ export default function LaundryScreen() {
       </View>
     </View>
   );
+
+  if (checkingSubscription || !user) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.dark ? "#131313" : "#fff" }]}>
+        <StatusBar barStyle={theme.dark ? "light-content" : "dark-content"} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4A90E2" />
+          <Text style={[styles.loadingText, { color: theme.dark ? "#ccc" : "#666" }]}>
+            {!user ? "Loading user data..." : "Checking subscription..."}
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (loading && !refreshing) {
     return (

@@ -1,42 +1,62 @@
 import { useTheme } from "@/context/theme.context";
 import useUser from "@/hooks/fetch/useUser";
 import {
-  fontSizes,
+    fontSizes,
 } from "@/themes/app.constant";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Alert,
-  Pressable,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    Alert,
+    Modal,
+    Pressable,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
+
+// Navigation params interface
+interface ControlScreenParams {
+  userId: string;
+  slotTime: string;
+  machineId: string;
+  authCode: string;
+}
 
 export default function ControlScreen() {
   const { theme } = useTheme();
   const { user } = useUser();
   const params = useLocalSearchParams();
 
-  // Get userId from params or from user hook (for QR code scanning)
+  // Get navigation params with proper typing
   const userId = (params.userId as string) || user?.id;
   const machineId = params.machineId as string;
   const slotTime = params.slotTime ? new Date(params.slotTime as string) : new Date();
   const initialAuthCode = (params.authCode as string) || "";
 
+  // State variables
   const [authCode, setAuthCode] = useState(initialAuthCode);
   const [isLoading, setIsLoading] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [cycleStarted, setCycleStarted] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [scannedMachineId, setScannedMachineId] = useState<string | null>(null);
+  const [countdownToSlot, setCountdownToSlot] = useState<number | null>(null);
 
+  // Camera permissions
+  const [permission, requestPermission] = useCameraPermissions();
+
+  // Refs
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qrLock = useRef(false);
 
   const formatTime = (date: Date) =>
     date.toLocaleDateString('en-US', {
@@ -62,11 +82,54 @@ export default function ControlScreen() {
     return now >= slotStart && now <= slotEnd;
   };
 
+  // Check if current time is before slot time for countdown
+  const getTimeUntilSlot = () => {
+    const now = new Date();
+    const slotStart = new Date(slotTime);
+    const diffMs = slotStart.getTime() - now.getTime();
+    return Math.max(0, Math.floor(diffMs / 1000));
+  };
+
+  // Check if slot time is within valid range (current time to current time + 30 min)
+  const isSlotTimeValid = () => {
+    const now = new Date();
+    const slotStart = new Date(slotTime);
+    const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
+    return now >= slotStart && now <= slotEnd;
+  };
+
+  // Initialize countdown to slot time
   useEffect(() => {
+    const timeUntilSlot = getTimeUntilSlot();
+    if (timeUntilSlot > 0) {
+      setCountdownToSlot(timeUntilSlot);
+    }
+
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (countdownRef.current) clearInterval(countdownRef.current);
     };
   }, []);
+
+  // Countdown to slot time effect
+  useEffect(() => {
+    if (countdownToSlot !== null && countdownToSlot > 0) {
+      countdownRef.current = setInterval(() => {
+        setCountdownToSlot(prev => {
+          if (prev === null || prev <= 1) {
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else if (countdownToSlot === 0) {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    }
+
+    return () => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  }, [countdownToSlot]);
 
   useEffect(() => {
     if (timeRemaining !== null && timeRemaining > 0) {
@@ -145,8 +208,65 @@ export default function ControlScreen() {
     }
   };
 
+  // QR Code scanning functions
+  const handleScanQRCode = async () => {
+    if (!isSlotTimeValid()) {
+      Alert.alert("Error", "Slot time not active");
+      return;
+    }
+
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      if (!result.granted) {
+        Alert.alert("Error", "Camera permission required");
+        return;
+      }
+    }
+
+    setShowScanner(true);
+  };
+
+  const handleQRCodeScanned = ({ data }: { data: string }) => {
+    if (data && !qrLock.current) {
+      qrLock.current = true;
+
+      // Check if QR code matches expected format: "machineId:<machineId>"
+      if (data.startsWith("machineId:")) {
+        const scannedId = data.replace("machineId:", "");
+
+        // Validate it matches the slot's machineId
+        if (scannedId !== machineId) {
+          Alert.alert("Error", "Wrong machine scanned", [
+            {
+              text: "OK",
+              onPress: () => {
+                qrLock.current = false;
+              },
+            },
+          ]);
+          return;
+        }
+
+        // Machine matches - close scanner and update state
+        setScannedMachineId(scannedId);
+        setShowScanner(false);
+        qrLock.current = false;
+
+        Alert.alert("Success", `Machine ${scannedId} verified! You can now start the cycle.`);
+      } else {
+        Alert.alert("Error", "Invalid QR code format", [
+          {
+            text: "OK",
+            onPress: () => {
+              qrLock.current = false;
+            },
+          },
+        ]);
+      }
+    }
+  };
+
   const handleGoBack = () => router.back();
-  const handleGoHome = () => router.push("/(tabs)/" as any);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.dark ? "#131313" : "#fff" }]}>
@@ -161,32 +281,68 @@ export default function ControlScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {cycleStarted && timeRemaining !== null && (
-          <View style={styles.timerContainer}>
-            <Text style={[styles.timerLabel, { color: theme.dark ? "#ccc" : "#666" }]}>Time Remaining</Text>
-            <Text style={[styles.timerText, { color: theme.dark ? "#fff" : "#000" }]}>{formatTimer(timeRemaining)}</Text>
-          </View>
-        )}
-
-        <View style={[styles.card, { backgroundColor: theme.dark ? "#1e1e1e" : "#fff" }]}>
-          <Text style={[styles.cardTitle, { color: theme.dark ? "#fff" : "#000" }]}>Slot Details</Text>
+        {/* My Booking Section */}
+        <View style={[styles.bookingCard, { backgroundColor: theme.dark ? "#2a2a2a" : "#f5f5f5" }]}>
+          <Text style={[styles.cardTitle, { color: theme.dark ? "#fff" : "#000" }]}>My Booking</Text>
 
           <View style={styles.detailRow}>
-            <Text style={[styles.detailLabel, { color: theme.dark ? "#ccc" : "#666" }]}>Machine:</Text>
-            <Text style={[styles.detailValue, { color: theme.dark ? "#fff" : "#000" }]}>{machineId}</Text>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Text style={[styles.detailLabel, { color: theme.dark ? "#ccc" : "#666" }]}>Time Slot:</Text>
+            <Text style={[styles.detailLabel, { color: theme.dark ? "#ccc" : "#666" }]}>Slot Time:</Text>
             <Text style={[styles.detailValue, { color: theme.dark ? "#fff" : "#000" }]}>{formatTime(slotTime)}</Text>
           </View>
 
           <View style={styles.detailRow}>
-            <Text style={[styles.detailLabel, { color: theme.dark ? "#ccc" : "#666" }]}>Duration:</Text>
-            <Text style={[styles.detailValue, { color: theme.dark ? "#fff" : "#000" }]}>30 minutes</Text>
+            <Text style={[styles.detailLabel, { color: theme.dark ? "#ccc" : "#666" }]}>Machine ID:</Text>
+            <Text style={[styles.detailValue, { color: theme.dark ? "#fff" : "#000" }]}>{machineId}</Text>
+          </View>
+
+          {/* Countdown or Ready Status */}
+          {countdownToSlot !== null && countdownToSlot > 0 ? (
+            <View style={styles.countdownContainer}>
+              <Text style={[styles.countdownLabel, { color: theme.dark ? "#ccc" : "#666" }]}>
+                You can start booking in
+              </Text>
+              <Text style={[styles.countdownText, { color: theme.dark ? "#4CAF50" : "#2E7D32" }]}>
+                {formatTimer(countdownToSlot)}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.readyContainer}>
+              <Text style={[styles.readyText, { color: theme.dark ? "#4CAF50" : "#2E7D32" }]}>
+                You can wash now, scan QR to wash
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Cycle Timer */}
+        {cycleStarted && timeRemaining !== null && (
+          <View style={styles.timerContainer}>
+            <Text style={[styles.timerLabel, { color: "#fff" }]}>Cycle Time Remaining</Text>
+            <Text style={[styles.timerText, { color: "#fff" }]}>{formatTimer(timeRemaining)}</Text>
+          </View>
+        )}
+
+        {/* Slot Details Section */}
+        <View style={[styles.card, { backgroundColor: theme.dark ? "#1e1e1e" : "#fff" }]}>
+          <Text style={[styles.cardTitle, { color: theme.dark ? "#fff" : "#000" }]}>Slot Details</Text>
+
+          <View style={styles.detailRow}>
+            <Text style={[styles.detailLabel, { color: theme.dark ? "#ccc" : "#666" }]}>Slot Time:</Text>
+            <Text style={[styles.detailValue, { color: theme.dark ? "#fff" : "#000" }]}>{formatTime(slotTime)}</Text>
+          </View>
+
+          <View style={styles.detailRow}>
+            <Text style={[styles.detailLabel, { color: theme.dark ? "#ccc" : "#666" }]}>Machine ID:</Text>
+            <Text style={[styles.detailValue, { color: theme.dark ? "#fff" : "#000" }]}>{machineId}</Text>
+          </View>
+
+          <View style={styles.detailRow}>
+            <Text style={[styles.detailLabel, { color: theme.dark ? "#ccc" : "#666" }]}>Auth Code:</Text>
+            <Text style={[styles.detailValue, { color: theme.dark ? "#fff" : "#000" }]}>{authCode}</Text>
           </View>
         </View>
 
+        {/* Auth Code Input */}
         <View style={[styles.card, { backgroundColor: theme.dark ? "#1e1e1e" : "#fff" }]}>
           <Text style={[styles.cardTitle, { color: theme.dark ? "#fff" : "#000" }]}>Authentication Code</Text>
           <TextInput
@@ -207,11 +363,29 @@ export default function ControlScreen() {
           />
         </View>
 
+        {/* Action Buttons */}
         <View style={styles.buttonContainer}>
           <Pressable
-            style={[styles.button, styles.startButton, { opacity: isLoading || !authCode ? 0.5 : 1 }]}
+            style={[
+              styles.button,
+              styles.scanButton,
+              { opacity: !isSlotTimeValid() ? 0.5 : 1 }
+            ]}
+            onPress={handleScanQRCode}
+            disabled={!isSlotTimeValid()}
+          >
+            <Ionicons name="qr-code" size={20} color="#fff" />
+            <Text style={styles.buttonText}>Scan QR Code</Text>
+          </Pressable>
+
+          <Pressable
+            style={[
+              styles.button,
+              styles.startButton,
+              { opacity: isLoading || !authCode || !scannedMachineId ? 0.5 : 1 }
+            ]}
             onPress={handleStartCycle}
-            disabled={isLoading || !authCode}
+            disabled={isLoading || !authCode || !scannedMachineId}
           >
             {isLoading ? (
               <Text style={styles.buttonText}>Starting...</Text>
@@ -224,6 +398,47 @@ export default function ControlScreen() {
           </Pressable>
         </View>
       </ScrollView>
+
+      {/* QR Scanner Modal */}
+      <Modal
+        visible={showScanner}
+        animationType="slide"
+        onRequestClose={() => {
+          setShowScanner(false);
+          qrLock.current = false;
+        }}
+      >
+        <View style={StyleSheet.absoluteFillObject}>
+          <CameraView
+            style={StyleSheet.absoluteFillObject}
+            facing="back"
+            onBarcodeScanned={handleQRCodeScanned}
+          />
+
+          {/* Scanner Overlay */}
+          <View style={styles.scannerOverlay}>
+            <View style={styles.scannerHeader}>
+              <Pressable
+                onPress={() => {
+                  setShowScanner(false);
+                  qrLock.current = false;
+                }}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={scale(24)} color="#fff" />
+              </Pressable>
+              <Text style={styles.scannerTitle}>Scan QR Code</Text>
+              <View style={{ width: scale(40) }} />
+            </View>
+
+            <View style={styles.scannerInstructions}>
+              <Text style={styles.instructionsText}>
+                Point your camera at the QR code on the washing machine
+              </Text>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -243,27 +458,83 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   content: { flex: 1, paddingHorizontal: scale(20) },
+
+  // My Booking Card
+  bookingCard: {
+    borderRadius: scale(12),
+    padding: scale(20),
+    marginBottom: verticalScale(16),
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+
+  // Regular Card
   card: {
     borderRadius: scale(12),
     padding: scale(20),
     marginBottom: verticalScale(16),
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
+
   cardTitle: {
     fontSize: fontSizes.FONT18,
     fontWeight: "bold",
     marginBottom: verticalScale(16),
   },
+
   detailRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: verticalScale(12),
   },
+
   detailLabel: { fontSize: fontSizes.FONT14 },
   detailValue: {
     fontSize: fontSizes.FONT14,
     fontWeight: "600",
     textAlign: "right",
   },
+
+  // Countdown styles
+  countdownContainer: {
+    alignItems: "center",
+    marginTop: verticalScale(16),
+    padding: scale(16),
+    backgroundColor: "rgba(76, 175, 80, 0.1)",
+    borderRadius: scale(8),
+  },
+
+  countdownLabel: {
+    fontSize: fontSizes.FONT14,
+    marginBottom: verticalScale(8),
+  },
+
+  countdownText: {
+    fontSize: fontSizes.FONT24,
+    fontWeight: "bold",
+    fontFamily: "monospace",
+  },
+
+  // Ready status
+  readyContainer: {
+    alignItems: "center",
+    marginTop: verticalScale(16),
+    padding: scale(16),
+    backgroundColor: "rgba(76, 175, 80, 0.1)",
+    borderRadius: scale(8),
+  },
+
+  readyText: {
+    fontSize: fontSizes.FONT16,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+
+  // Auth code input
   authCodeInput: {
     borderWidth: 1,
     borderRadius: scale(8),
@@ -275,10 +546,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
     textTransform: "uppercase",
   },
+
+  // Buttons
   buttonContainer: {
     marginTop: verticalScale(20),
     gap: verticalScale(12),
   },
+
   button: {
     flexDirection: "row",
     alignItems: "center",
@@ -286,15 +560,23 @@ const styles = StyleSheet.create({
     paddingVertical: verticalScale(16),
     borderRadius: scale(12),
   },
+
+  scanButton: {
+    backgroundColor: "#2196F3",
+  },
+
   startButton: {
     backgroundColor: "#4CAF50",
   },
+
   buttonText: {
     color: "#fff",
     fontSize: fontSizes.FONT16,
     fontWeight: "bold",
     marginLeft: scale(8),
   },
+
+  // Timer
   timerContainer: {
     alignItems: "center",
     backgroundColor: "#4A90E2",
@@ -302,15 +584,71 @@ const styles = StyleSheet.create({
     padding: scale(24),
     marginBottom: verticalScale(20),
   },
+
   timerLabel: {
     fontSize: fontSizes.FONT14,
     color: "#fff",
     marginBottom: verticalScale(8),
   },
+
   timerText: {
     fontSize: 48,
     fontWeight: "bold",
     color: "#fff",
     fontFamily: "monospace",
+  },
+
+  // Scanner Modal Styles
+  scannerOverlay: {
+    flex: 1,
+    backgroundColor: "transparent",
+  },
+
+  scannerHeader: {
+    position: "absolute",
+    top: 50,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: scale(20),
+    paddingVertical: scale(15),
+    zIndex: 1000,
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+  },
+
+  closeButton: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  scannerTitle: {
+    color: "#fff",
+    fontSize: fontSizes.FONT18,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+
+  scannerInstructions: {
+    position: "absolute",
+    bottom: scale(100),
+    left: scale(20),
+    right: scale(20),
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    borderRadius: scale(10),
+    padding: scale(15),
+    zIndex: 1000,
+  },
+
+  instructionsText: {
+    color: "#fff",
+    fontSize: fontSizes.FONT16,
+    textAlign: "center",
+    fontWeight: "500",
   },
 });
