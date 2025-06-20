@@ -6,6 +6,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
+  Alert,
   Pressable,
   StatusBar,
   StyleSheet,
@@ -14,9 +15,37 @@ import {
 } from "react-native";
 import { moderateScale, scale, verticalScale } from "react-native-size-matters";
 
+
+import { useCameraPermissions } from "expo-camera";
+
+
 export default function WelcomeHeader() {
   const { name } = useUserData();
   const [notificationLength, setNotificationLength] = useState(0);
+
+  const [permission, requestPermission] = useCameraPermissions();
+  const isPermissionGranted = Boolean(permission?.granted);
+
+  const handleScanPress = async () => {
+    if (!isPermissionGranted) {
+      // Request permission first
+      const result = await requestPermission();
+      if (result.granted) {
+        // Permission granted, navigate to scanner
+        router.push("/(routes)/scanner" as any);
+      } else {
+        // Permission denied, show alert
+        Alert.alert(
+          "Camera Permission Required",
+          "Please enable camera permission to scan QR codes.",
+          [{ text: "OK" }]
+        );
+      }
+    } else {
+      // Permission already granted, navigate to scanner
+      router.push("/(routes)/scanner" as any);
+    }
+  };
 
   useEffect(() => {
     const fetchNotifications = async () => {
@@ -45,7 +74,7 @@ export default function WelcomeHeader() {
           <Text style={styles.greeting}>Hi {name?.split(" ")[0]},</Text>
           <Text style={styles.subtitle}>Let's start Learning</Text>
         </View>
-        <View style={{ flexDirection: "row" }}>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
           <Pressable onPress={() => router.push("/(routes)/notification")}>
             <View style={styles.notificationWrapper}>
               <Ionicons name="notifications-sharp" size={scale(25)} color="#fff" />
@@ -54,9 +83,18 @@ export default function WelcomeHeader() {
               </View>
             </View>
           </Pressable>
+
+          {/* Scan Button */}
+          <View>
+            <Pressable onPress={handleScanPress}>
+              <Text style={styles.buttonStyle}>
+                {isPermissionGranted ? "Scan QR Code" : "Enable Camera & Scan"}
+              </Text>
+            </Pressable>
+          </View>
+
         </View>
       </View>
-      
     </LinearGradient>
   );
 }
@@ -109,19 +147,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#fff",
   },
-  input: {
-    height: verticalScale(40),
-    backgroundColor: "#fff",
-    color: "#000",
-    marginTop: verticalScale(12),
-    fontSize: 16,
-    borderRadius: moderateScale(30),
-    paddingHorizontal: moderateScale(15),
-    fontFamily: "Poppins_400Regular",
+  scanButton: {
+    marginLeft: scale(10),
+    backgroundColor: "#19C964",
+    paddingVertical: verticalScale(8),
+    paddingHorizontal: scale(14),
+    borderRadius: scale(10),
+    justifyContent: "center",
+    alignItems: "center",
   },
-  searchIcon: {
-    position: "absolute",
-    right: scale(10),
-    top: verticalScale(16),
+  scanButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontFamily: "Poppins_500Medium",
+  },
+  buttonStyle: {
+    color: "#fff",
+    fontSize: 16,
+    fontFamily: "Poppins_500Medium",
+    backgroundColor: "#19C964",
+    paddingVertical: verticalScale(8),
+    paddingHorizontal: scale(14),
+    borderRadius: scale(10),
+    textAlign: "center",
   },
 });

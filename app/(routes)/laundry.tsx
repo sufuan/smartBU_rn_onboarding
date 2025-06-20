@@ -125,23 +125,16 @@ export default function LaundryScreen() {
   }, [fetchMachines]);
 
   // Handle slot booking
-  const handleBookSlot = useCallback((machineId: string, slotTime: Date) => {
-    Alert.alert(
-      "Book Slot",
-      `Would you like to book this slot?\n\nMachine: ${machineId}\nTime: ${formatTime(slotTime)}`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Book Now",
-          onPress: () => {
-            Alert.alert("Success", "Slot booking functionality will be implemented soon!");
-          },
-        },
-      ]
-    );
+  const handleBookSlot = useCallback((machineId: string, slotTime: Date, machineLocation?: string) => {
+    // Navigate to SlotBookingScreen with parameters
+    router.push({
+      pathname: "/(routes)/slot-booking" as any,
+      params: {
+        machineId: machineId,
+        slotTime: slotTime.toISOString(),
+        machineLocation: machineLocation || "Unknown Location",
+      },
+    });
   }, []);
 
   // Format time for display
@@ -154,7 +147,7 @@ export default function LaundryScreen() {
   };
 
   // Render slot item
-  const renderSlot = ({ item: slot }: { item: AvailableSlot }) => (
+  const renderSlot = ({ item: slot, machineLocation }: { item: AvailableSlot, machineLocation?: string }) => (
     <View style={[styles.slotCard, { backgroundColor: theme.dark ? "#2a2a2a" : "#f8f9fa" }]}>
       <View style={styles.slotInfo}>
         <Text style={[styles.slotTime, { color: theme.dark ? "#fff" : "#000" }]}>
@@ -166,7 +159,7 @@ export default function LaundryScreen() {
       </View>
       <Pressable
         style={[styles.bookButton, { backgroundColor: "#4A90E2" }]}
-        onPress={() => handleBookSlot(slot.machineId, slot.slotTime)}
+        onPress={() => handleBookSlot(slot.machineId, slot.slotTime, machineLocation)}
       >
         <Text style={styles.bookButtonText}>Book Slot</Text>
       </Pressable>
@@ -208,7 +201,7 @@ export default function LaundryScreen() {
         ) : machine.availableSlots.length > 0 ? (
           <FlatList
             data={machine.availableSlots.slice(0, 6)} // Show first 6 slots
-            renderItem={renderSlot}
+            renderItem={({ item }) => renderSlot({ item, machineLocation: machine.location })}
             keyExtractor={(slot, index) => `${machine.id}-${slot.slotTime.getTime()}-${index}`}
             horizontal
             showsHorizontalScrollIndicator={false}

@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "smartbulogin",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.sufian.smartBU"
@@ -44,7 +44,15 @@
         }
       ],
       "expo-web-browser",
-      "react-native-iap"
+      "react-native-iap",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera",
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone",
+          "recordAudioAndroid": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
