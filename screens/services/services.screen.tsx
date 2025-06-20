@@ -1,21 +1,21 @@
 import { useTheme } from "@/context/theme.context";
-import useUser from "@/hooks/fetch/useUser";
+import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import {
-  fontSizes
+    fontSizes
 } from "@/themes/app.constant";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import axios from "axios";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Pressable,
+    RefreshControl,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
@@ -34,7 +34,7 @@ interface MachineWithSlots extends MachineType {
 
 export default function ServicesScreen() {
   const { theme } = useTheme();
-  const { user } = useUser();
+  const { user } = useSubscriptionStatus();
 
   const [machines, setMachines] = useState<MachineWithSlots[]>([]);
   const [loading, setLoading] = useState(true);

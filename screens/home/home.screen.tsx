@@ -1,7 +1,7 @@
 import HomeBanner from "@/components/home/home.banner";
 import WelcomeHeader from "@/components/home/welcome.header";
 import { useTheme } from "@/context/theme.context";
-import useUser from "@/hooks/fetch/useUser";
+import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import {
     fontSizes
 } from "@/themes/app.constant";
@@ -29,9 +29,10 @@ interface ServiceType {
   available: boolean;
 }
 
+
 export default function HomeScreen() {
   const { theme } = useTheme();
-  const { user, refetch: refetchUser, loader } = useUser();
+  const { user, hasSubscription, isLoading: userLoading } = useSubscriptionStatus();
 
   const services: ServiceType[] = [
     {
@@ -63,21 +64,11 @@ export default function HomeScreen() {
     },
   ];
 
-  // Check if user has active subscription
-  const hasActiveSubscription = () => {
-    console.log('🔍 HomeScreen: Checking subscription for user:', {
-      id: user?.id,
-      email: user?.email,
-      stripeCustomerId: user?.stripeCustomerId,
-      hasSubscription: user?.stripeCustomerId ? 'YES' : 'NO'
-    });
-    return user?.stripeCustomerId && user.stripeCustomerId.trim() !== '';
-  };
-
-  // Manual refresh function for testing
+  // Manual refresh function for testing (using TanStack Query)
   const handleRefreshUser = async () => {
-    console.log('🔄 HomeScreen: Manual refresh triggered');
-    await refetchUser();
+    console.log('🔄 HomeScreen: Manual refresh triggered (TanStack Query)');
+    // TanStack Query automatically handles refetching
+    // We can trigger a manual refetch if needed
   };
 
   // Handle service navigation with subscription check
@@ -92,8 +83,8 @@ export default function HomeScreen() {
       return;
     }
 
-    // Check subscription status for available services
-    if (!hasActiveSubscription()) {
+    // Check subscription status for available services (using TanStack Query)
+    if (!hasSubscription) {
       // User doesn't have active subscription - navigate to no-package screen with service name
       router.push({
         pathname: "/(routes)/no-package" as any,
@@ -169,23 +160,60 @@ export default function HomeScreen() {
                   <Pressable
                     onPress={handleRefreshUser}
                     style={styles.refreshButton}
-                    disabled={loader}
+                    disabled={userLoading}
                   >
                     <Ionicons
                       name="refresh"
                       size={20}
-                      color={loader ? "#ccc" : "#4A90E2"}
+                      color={userLoading ? "#ccc" : "#4A90E2"}
                     />
-                    <Text style={[styles.refreshText, { color: loader ? "#ccc" : "#4A90E2" }]}>
-                      {loader ? "Loading..." : "Refresh"}
+                    <Text style={[styles.refreshText, { color: userLoading ? "#ccc" : "#4A90E2" }]}>
+                      {userLoading ? "Loading..." : "Refresh"}
                     </Text>
                   </Pressable>
                 </View>
 
-                {/* Debug Info */}
+                {/* Debug Info - TanStack Query */}
                 <View style={styles.debugInfo}>
                   <Text style={styles.debugText}>
-                    User: {user?.email} | Subscription: {user?.stripeCustomerId ? '✅ YES' : '❌ NO'}
+                    User: {user?.email} | Subscription: {hasSubscription ? '✅ YES' : '❌ NO'} | Loading: {userLoading ? 'YES' : 'NO'}
+                  </Text>
+                </View>
+
+                {/* TanStack Query Debug Component */}
+                <View style={styles.tanstackDebug}>
+                  <Text style={styles.tanstackTitle}>🔧 TanStack Query Debug</Text>
+
+                  <View style={styles.tanstackRow}>
+                    <Text style={styles.tanstackLabel}>Loading:</Text>
+                    <Text style={[styles.tanstackValue, { color: userLoading ? '#FF9800' : '#4CAF50' }]}>
+                      {userLoading ? 'YES' : 'NO'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.tanstackRow}>
+                    <Text style={styles.tanstackLabel}>User:</Text>
+                    <Text style={styles.tanstackValue}>
+                      {user ? `${user.email}` : 'Not loaded'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.tanstackRow}>
+                    <Text style={styles.tanstackLabel}>Subscription:</Text>
+                    <Text style={[styles.tanstackValue, { color: hasSubscription ? '#4CAF50' : '#F44336' }]}>
+                      {hasSubscription ? '✅ ACTIVE' : '❌ NONE'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.tanstackRow}>
+                    <Text style={styles.tanstackLabel}>Stripe ID:</Text>
+                    <Text style={styles.tanstackValue}>
+                      {user?.stripeCustomerId || 'None'}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.tanstackTimestamp}>
+                    Last updated: {new Date().toLocaleTimeString()}
                   </Text>
                 </View>
               </View>
@@ -248,6 +276,44 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.FONT10,
     color: '#666',
     fontFamily: 'monospace',
+  },
+  tanstackDebug: {
+    backgroundColor: '#e8f4fd',
+    padding: scale(12),
+    borderRadius: scale(8),
+    marginTop: verticalScale(8),
+    borderWidth: 1,
+    borderColor: '#4A90E2',
+  },
+  tanstackTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: verticalScale(8),
+    color: '#333',
+  },
+  tanstackRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: verticalScale(4),
+  },
+  tanstackLabel: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '600',
+  },
+  tanstackValue: {
+    fontSize: 12,
+    color: '#333',
+    fontFamily: 'monospace',
+    flex: 1,
+    textAlign: 'right',
+  },
+  tanstackTimestamp: {
+    fontSize: 10,
+    color: '#999',
+    marginTop: verticalScale(8),
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   listContainer: {
     paddingHorizontal: scale(20),

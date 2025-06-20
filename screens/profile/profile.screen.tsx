@@ -1,17 +1,17 @@
-import useUser from "@/hooks/fetch/useUser";
+import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import useUserData from "@/hooks/useUserData";
 import {
-  fontSizes,
-  IsAndroid,
-  IsHaveNotch,
-  IsIPAD,
+    fontSizes,
+    IsAndroid,
+    IsHaveNotch,
+    IsIPAD,
 } from "@/themes/app.constant";
 import {
-  Feather,
-  FontAwesome,
-  Ionicons,
-  MaterialCommunityIcons,
-  MaterialIcons,
+    Feather,
+    FontAwesome,
+    Ionicons,
+    MaterialCommunityIcons,
+    MaterialIcons,
 } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -19,21 +19,21 @@ import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import React from "react";
 import {
-  Image,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View,
+    Image,
+    Pressable,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
 
 export default function ProfileScreen() {
   // --- Hooks for user data and safe area ---
-  const { user } = useUser();
+  const { user } = useSubscriptionStatus();
   const { name, email, avatar } = useUserData();
   const insets = useSafeAreaInsets();
 

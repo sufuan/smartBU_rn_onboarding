@@ -1,21 +1,21 @@
 import { useTheme } from "@/context/theme.context";
-import useUser from "@/hooks/fetch/useUser";
+import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import {
-    fontSizes
+  fontSizes
 } from "@/themes/app.constant";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import axios from "axios";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Pressable,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
@@ -43,9 +43,10 @@ interface BookingResponse {
   };
 }
 
+
 export default function SlotBookingScreen() {
   const { theme } = useTheme();
-  const { user, refetch: refetchUser, loader: userLoading } = useUser();
+  const { user, hasSubscription, isLoading: userLoading } = useSubscriptionStatus();
   const params = useLocalSearchParams<BookingParams>();
 
   const [loading, setLoading] = useState(false);
@@ -160,38 +161,33 @@ export default function SlotBookingScreen() {
     });
   };
 
-  // Check if user has subscription
+  // Check if user has subscription (using TanStack Query)
   const hasActiveSubscription = () => {
-    return user?.stripeCustomerId && user.stripeCustomerId.trim() !== '';
+    return hasSubscription;
   };
 
-  // Handle booking confirmation
+  // Handle booking confirmation (using TanStack Query)
   const handleConfirmBooking = async () => {
-    // Refresh user data before booking
-    await refetchUser();
+    // Check subscription using TanStack Query (no manual refresh needed)
+    if (!hasActiveSubscription()) {
+      Alert.alert(
+        "Subscription Required",
+        "You need an active subscription to book washing machine slots.",
+        [
+          {
+            text: "Subscribe Now",
+            onPress: () => router.push("/(routes)/checkout"),
+          },
+          {
+            text: "Cancel",
+            style: "cancel",
+          },
+        ]
+      );
+      return;
+    }
 
-    // Small delay to ensure user data is updated
-    setTimeout(async () => {
-      if (!hasActiveSubscription()) {
-        Alert.alert(
-          "Subscription Required",
-          "You need an active subscription to book washing machine slots.",
-          [
-            {
-              text: "Subscribe Now",
-              onPress: () => router.push("/(routes)/checkout"),
-            },
-            {
-              text: "Cancel",
-              style: "cancel",
-            },
-          ]
-        );
-        return;
-      }
-
-      await proceedWithBooking();
-    }, 300);
+    await proceedWithBooking();
   };
 
   const proceedWithBooking = async () => {

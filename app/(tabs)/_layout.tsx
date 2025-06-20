@@ -1,5 +1,5 @@
 import { useTheme } from "@/context/theme.context";
-import useUser from "@/hooks/fetch/useUser";
+import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import { fontSizes, IsAndroid, IsIOS } from "@/themes/app.constant";
 import { Feather, Ionicons, Octicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
@@ -13,7 +13,7 @@ const NAVIGATION_BAR_HEIGHT = IsAndroid ? 48 : 0; // Typical Android navigation 
 
 export default function _layout() {
   const { theme } = useTheme();
-  const { loader } = useUser();
+  const { isLoading: loader } = useSubscriptionStatus();
 
   return (
     <View style={{ 

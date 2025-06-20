@@ -1,7 +1,7 @@
 import { useTheme } from "@/context/theme.context";
-import useUser from "@/hooks/fetch/useUser";
+import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import {
-    fontSizes,
+  fontSizes,
 } from "@/themes/app.constant";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
@@ -9,15 +9,15 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    Alert,
-    Modal,
-    Pressable,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    View
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
@@ -32,7 +32,7 @@ interface ControlScreenParams {
 
 export default function ControlScreen() {
   const { theme } = useTheme();
-  const { user } = useUser();
+  const { user } = useSubscriptionStatus();
   const params = useLocalSearchParams();
 
   // Get navigation params with proper typing

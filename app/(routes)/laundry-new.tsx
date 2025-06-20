@@ -1,24 +1,23 @@
 import { useTheme } from "@/context/theme.context";
+import { useBookSlotMutation } from "@/hooks/mutations/useSlotMutations";
+import { useMachineSlotsQuery, useMachinesQuery } from "@/hooks/queries/useMachineQueries";
 import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
-import {
-  fontSizes
-} from "@/themes/app.constant";
+import { fontSizes } from "@/themes/app.constant";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
-import axios from "axios";
 import { router } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Pressable,
+    RefreshControl,
+    SafeAreaView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
 
 interface AvailableSlot {
@@ -28,166 +27,51 @@ interface AvailableSlot {
   machineId: string;
 }
 
-interface MachineWithSlots extends MachineType {
-  availableSlots: AvailableSlot[];
-  loading: boolean;
-}
-
-export default function LaundryScreen() {
+export default function LaundryScreenNew() {
   const { theme } = useTheme();
-  const { user, hasSubscription, isLoading: userLoading } = useSubscriptionStatus();
+  
+  // TanStack Query hooks
+  const { hasSubscription, isLoading: userLoading, user } = useSubscriptionStatus();
+  const { machines, isLoading: machinesLoading, error: machinesError, refetch: refetchMachines } = useMachinesQuery();
+  const bookSlotMutation = useBookSlotMutation();
 
-  const [machines, setMachines] = useState<MachineWithSlots[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [checkingSubscription, setCheckingSubscription] = useState(true);
-
-  // Check if user has active subscription (using TanStack Query)
-  const hasActiveSubscription = () => {
-    return hasSubscription;
-  };
-
-  // Check subscription when user data is available
-  useEffect(() => {
-    // If user data is not yet available, we wait. The UI shows "Loading user data...".
-    if (!user) {
-      console.log('⏳ LaundryScreen: Waiting for user data...');
-      return; // Exit until we have user data
+  // Check subscription and redirect if needed
+  React.useEffect(() => {
+    if (!userLoading && !hasSubscription) {
+      console.log('❌ LaundryScreen: No subscription, redirecting to no-package');
+      router.replace({
+        pathname: "/(routes)/no-package" as any,
+        params: { serviceName: "Your Laundry" }
+      });
     }
+  }, [userLoading, hasSubscription]);
 
-    // Once we have user data, we start the subscription check.
-    console.log('🔍 LaundryScreen: User data found, checking subscription...');
-    
-    // The UI will show "Checking subscription..." because `checkingSubscription` is initially true.
-    const subscriptionCheckTimeout = setTimeout(() => {
-      if (hasActiveSubscription()) {
-        // If subscription is active, we stop the check and allow the component to render the machine list.
-        console.log('✅ LaundryScreen: Active subscription found.');
-        setCheckingSubscription(false);
-      } else {
-        // If no subscription, redirect to the "no-package" screen.
-        console.log('❌ LaundryScreen: No active subscription. Redirecting...');
-        router.replace({
-          pathname: "/(routes)/no-package" as any,
-          params: { serviceName: "Your Laundry" },
-        });
-      }
-    }, 500); // A small delay can prevent UI flickering.
-
-    // Cleanup function to clear the timeout if the component unmounts or `user` changes.
-    return () => clearTimeout(subscriptionCheckTimeout);
-  }, [user]); // This effect runs whenever the `user` object changes.
-
-  // Fetch machines from API with timeout and optimization
-  const fetchMachines = useCallback(async () => {
-    try {
-      console.log('🔄 Fetching machines...');
-      setError(null);
-
-      console.log('🌐 Server URI:', process.env.EXPO_PUBLIC_SERVER_URI);
-
-      // Add timeout to prevent long loading
-      const response = await axios.get(
-        `${process.env.EXPO_PUBLIC_SERVER_URI}/api/machines`,
-        { timeout: 8000 } // 8 second timeout
-      );
-
-      console.log('✅ Machines response:', response.data);
-      if (response.data.success) {
-        const machinesData: MachineWithSlots[] = response.data.machines.map((machine: any) => ({
-          ...machine,
-          availableSlots: [],
-          loading: true,
-        }));
-
-        console.log('🏭 Machines data:', machinesData.length, 'machines');
-        setMachines(machinesData);
-
-        // Fetch slots for each machine with limited concurrency
-        console.log('🔄 Fetching slots for', machinesData.length, 'machines');
-
-        // Process machines in batches to avoid overwhelming the server
-        const batchSize = 2;
-        for (let i = 0; i < machinesData.length; i += batchSize) {
-          const batch = machinesData.slice(i, i + batchSize);
-          await Promise.all(
-            batch.map(async (machine) => {
-              try {
-                console.log('🔄 Fetching slots for machine:', machine.machineId);
-                const slotsResponse = await axios.get(
-                  `${process.env.EXPO_PUBLIC_SERVER_URI}/api/slots?machineId=${machine.id}`,
-                  { timeout: 5000 } // 5 second timeout for slots
-                );
-
-                console.log('✅ Slots response for', machine.machineId, ':', slotsResponse.data);
-                if (slotsResponse.data.success) {
-                  const availableSlots = slotsResponse.data.slots.map((slot: any) => ({
-                    ...slot,
-                    slotTime: new Date(slot.slotTime),
-                  }));
-
-                  console.log('📅 Available slots for', machine.machineId, ':', availableSlots.length);
-                  setMachines(prev => prev.map(m =>
-                    m.id === machine.id
-                      ? { ...m, availableSlots, loading: false }
-                      : m
-                  ));
-                }
-              } catch (error: any) {
-                console.error(`❌ Error fetching slots for machine ${machine.machineId}:`, error);
-                setMachines(prev => prev.map(m =>
-                  m.id === machine.id
-                    ? { ...m, availableSlots: [], loading: false }
-                    : m
-                ));
-              }
-            })
-          );
-
-          // Small delay between batches to prevent server overload
-          if (i + batchSize < machinesData.length) {
-            await new Promise(resolve => setTimeout(resolve, 200));
-          }
-        }
-      }
-    } catch (error: any) {
-      console.error("❌ Error fetching machines:", error);
-
-      if (error.code === 'ECONNABORTED') {
-        setError("Connection timeout. Please check your internet connection.");
-      } else {
-        setError("Failed to load washing machines. Please try again.");
-      }
-    } finally {
-      console.log('🏁 Fetch machines completed, setting loading to false');
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchMachines();
-  }, [fetchMachines]);
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchMachines();
-  }, [fetchMachines]);
-
-  // Handle slot booking (using TanStack Query)
-  const handleBookSlot = useCallback(async (machineId: string, slotTime: Date, machineLocation?: string) => {
-    console.log('🎯 LaundryScreen: Slot booking initiated for machine:', machineId);
-
-    // Check subscription using TanStack Query
-    console.log('🔍 LaundryScreen: Checking subscription for slot booking:', {
-      userId: user?.id,
-      email: user?.email,
-      hasSubscription: hasActiveSubscription()
+  // Enhanced machines data with slots
+  const machinesWithSlots = useMemo(() => {
+    return machines.map(machine => {
+      // Use individual slot queries for each machine
+      const slotsQuery = useMachineSlotsQuery(machine.id);
+      
+      return {
+        ...machine,
+        availableSlots: slotsQuery.slots?.map(slot => ({
+          ...slot,
+          slotTime: new Date(slot.slotTime),
+        })) || [],
+        slotsLoading: slotsQuery.isLoading,
+        slotsError: slotsQuery.error,
+      };
     });
+  }, [machines]);
 
-    if (!hasActiveSubscription()) {
-      console.log('❌ LaundryScreen: No subscription for slot booking');
+  // Handle slot booking with TanStack Query mutation
+  const handleBookSlot = useCallback(async (machineId: string, slotTime: Date, machineLocation?: string) => {
+    if (!user) {
+      Alert.alert('Error', 'User not found. Please try again.');
+      return;
+    }
+
+    if (!hasSubscription) {
       Alert.alert(
         "Subscription Required",
         "You need an active subscription to book washing machine slots.",
@@ -205,17 +89,13 @@ export default function LaundryScreen() {
       return;
     }
 
-    console.log('✅ LaundryScreen: Subscription confirmed, navigating to slot booking');
-    // Navigate to SlotBookingScreen with parameters
-    router.push({
-      pathname: "/(routes)/slot-booking" as any,
-      params: {
-        machineId: machineId,
-        slotTime: slotTime.toISOString(),
-        machineLocation: machineLocation || "Unknown Location",
-      },
+    // Use TanStack Query mutation for booking
+    bookSlotMutation.mutate({
+      userId: user.id,
+      machineId,
+      slotTime: slotTime.toISOString(),
     });
-  }, [user, hasSubscription]);
+  }, [user, hasSubscription, bookSlotMutation]);
 
   // Format time for display
   const formatTime = (date: Date) => {
@@ -238,16 +118,25 @@ export default function LaundryScreen() {
         </Text>
       </View>
       <Pressable
-        style={[styles.bookButton, { backgroundColor: "#4A90E2" }]}
+        style={[
+          styles.bookButton, 
+          { 
+            backgroundColor: bookSlotMutation.isPending ? "#ccc" : "#4A90E2",
+            opacity: bookSlotMutation.isPending ? 0.7 : 1
+          }
+        ]}
         onPress={() => handleBookSlot(slot.machineId, slot.slotTime, machineLocation)}
+        disabled={bookSlotMutation.isPending}
       >
-        <Text style={styles.bookButtonText}>Book Slot</Text>
+        <Text style={styles.bookButtonText}>
+          {bookSlotMutation.isPending ? "Booking..." : "Book Slot"}
+        </Text>
       </Pressable>
     </View>
   );
 
   // Render machine item
-  const renderMachine = ({ item: machine }: { item: MachineWithSlots }) => (
+  const renderMachine = ({ item: machine }: { item: any }) => (
     <View style={[styles.machineCard, { backgroundColor: theme.dark ? "#1e1e1e" : "#fff" }]}>
       <View style={styles.machineHeader}>
         <View style={styles.machineInfo}>
@@ -271,7 +160,7 @@ export default function LaundryScreen() {
           Available Slots
         </Text>
         
-        {machine.loading ? (
+        {machine.slotsLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color="#4A90E2" />
             <Text style={[styles.loadingText, { color: theme.dark ? "#ccc" : "#666" }]}>
@@ -296,21 +185,22 @@ export default function LaundryScreen() {
     </View>
   );
 
-  if (checkingSubscription || !user) {
+  // Loading states
+  if (userLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.dark ? "#131313" : "#fff" }]}>
         <StatusBar barStyle={theme.dark ? "light-content" : "dark-content"} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#4A90E2" />
           <Text style={[styles.loadingText, { color: theme.dark ? "#ccc" : "#666" }]}>
-            {!user ? "Loading user data..." : "Checking subscription..."}
+            Loading user data...
           </Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  if (loading && !refreshing) {
+  if (machinesLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.dark ? "#131313" : "#fff" }]}>
         <StatusBar barStyle={theme.dark ? "light-content" : "dark-content"} />
@@ -333,32 +223,39 @@ export default function LaundryScreen() {
           <Ionicons name="arrow-back" size={24} color={theme.dark ? "#fff" : "#000"} />
         </Pressable>
         <Text style={[styles.title, { color: theme.dark ? "#fff" : "#000" }]}>
-          Washing Machines
+          Washing Machines (TanStack Query)
         </Text>
         <View style={{ width: 24 }} />
       </View>
 
-      {error ? (
+      {/* Subscription Status Debug Info */}
+      <View style={styles.debugInfo}>
+        <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+          User: {user?.email} | Subscription: {hasSubscription ? '✅ YES' : '❌ NO'}
+        </Text>
+      </View>
+
+      {machinesError ? (
         <View style={styles.errorContainer}>
           <MaterialIcons name="error-outline" size={48} color="#F44336" />
           <Text style={[styles.errorText, { color: theme.dark ? "#fff" : "#000" }]}>
-            {error}
+            Failed to load washing machines
           </Text>
-          <Pressable style={styles.retryButton} onPress={fetchMachines}>
+          <Pressable style={styles.retryButton} onPress={() => refetchMachines()}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </Pressable>
         </View>
       ) : (
         <FlatList
-          data={machines}
+          data={machinesWithSlots}
           renderItem={renderMachine}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContainer}
           refreshControl={
             <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
+              refreshing={machinesLoading}
+              onRefresh={refetchMachines}
               colors={["#4A90E2"]}
               tintColor="#4A90E2"
             />
@@ -392,8 +289,19 @@ const styles = StyleSheet.create({
     padding: scale(8),
   },
   title: {
-    fontSize: fontSizes.FONT20,
+    fontSize: fontSizes.FONT18,
     fontWeight: 'bold',
+  },
+  debugInfo: {
+    backgroundColor: '#f5f5f5',
+    padding: scale(8),
+    marginHorizontal: scale(20),
+    borderRadius: scale(6),
+    marginBottom: verticalScale(10),
+  },
+  debugText: {
+    fontSize: fontSizes.FONT12,
+    fontFamily: 'monospace',
   },
   loadingContainer: {
     flex: 1,
@@ -464,7 +372,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   machineId: {
-    fontSize: fontSizes.FONT20,
+    fontSize: fontSizes.FONT18,
     fontWeight: 'bold',
     marginBottom: verticalScale(4),
   },
@@ -497,10 +405,8 @@ const styles = StyleSheet.create({
     padding: scale(12),
     marginRight: scale(12),
     minWidth: scale(120),
-    alignItems: 'center',
   },
   slotInfo: {
-    alignItems: 'center',
     marginBottom: verticalScale(8),
   },
   slotTime: {
@@ -512,9 +418,10 @@ const styles = StyleSheet.create({
     marginTop: verticalScale(2),
   },
   bookButton: {
-    paddingHorizontal: scale(16),
     paddingVertical: verticalScale(8),
+    paddingHorizontal: scale(12),
     borderRadius: scale(6),
+    alignItems: 'center',
   },
   bookButtonText: {
     color: '#fff',
@@ -524,7 +431,5 @@ const styles = StyleSheet.create({
   noSlotsText: {
     fontSize: fontSizes.FONT14,
     fontStyle: 'italic',
-    textAlign: 'center',
-    paddingVertical: verticalScale(20),
   },
 });
