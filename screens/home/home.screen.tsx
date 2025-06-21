@@ -3,19 +3,19 @@ import WelcomeHeader from "@/components/home/welcome.header";
 import { useTheme } from "@/context/theme.context";
 import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import {
-    fontSizes
+  fontSizes
 } from "@/themes/app.constant";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React from "react";
 import {
-    Alert,
-    FlatList,
-    Pressable,
-    StyleSheet,
-    Text,
-    View
+  Alert,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View
 } from "react-native";
 import { scale, verticalScale } from "react-native-size-matters";
 
@@ -120,7 +120,7 @@ export default function HomeScreen() {
       style={[
         styles.serviceCard,
         {
-          backgroundColor: "#fff",
+          backgroundColor: theme.dark ? "#2a2a2a" : "#fff",
           opacity: service.available ? 1 : 0.6
         }
       ]}
@@ -131,8 +131,8 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.serviceContent}>
-        <Text style={styles.serviceTitle}>{service.title}</Text>
-        <Text style={styles.serviceSubtitle}>{service.subtitle}</Text>
+        <Text style={[styles.serviceTitle, { color: theme.dark ? "#fff" : "#000" }]}>{service.title}</Text>
+        <Text style={[styles.serviceSubtitle, { color: theme.dark ? "#ccc" : "#666" }]}>{service.subtitle}</Text>
 
         {!service.available && (
           <Text style={styles.comingSoon}>Coming Soon</Text>
@@ -140,14 +140,14 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.serviceArrow}>
-        <Ionicons name="chevron-forward" size={20} color="#ccc" />
+        <Ionicons name="chevron-forward" size={20} color={theme.dark ? "#666" : "#ccc"} />
       </View>
     </Pressable>
   );
 
   return (
     <LinearGradient
-      colors={["#fff", "#f7f7f7"]}
+      colors={theme.dark ? ["#131313", "#1a1a1a"] : ["#fff", "#f7f7f7"]}
       start={{ x: 0, y: 0 }}
       end={{ x: 0, y: 1 }}
       style={{ flex: 1 }}
@@ -162,8 +162,8 @@ export default function HomeScreen() {
               <View style={styles.sectionHeader}>
                 <View style={styles.sectionTitleRow}>
                   <View>
-                    <Text style={styles.sectionTitle}>Our Services</Text>
-                    <Text style={styles.sectionSubtitle}>Choose from our available services</Text>
+                    <Text style={[styles.sectionTitle, { color: theme.dark ? "#fff" : "#000" }]}>Our Services</Text>
+                    <Text style={[styles.sectionSubtitle, { color: theme.dark ? "#ccc" : "#666" }]}>Choose from our available services</Text>
                   </View>
                   <Pressable
                     onPress={handleRefreshUser}
@@ -182,54 +182,57 @@ export default function HomeScreen() {
                 </View>
 
                 {/* Debug Info - TanStack Query */}
-                <View style={styles.debugInfo}>
-                  <Text style={styles.debugText}>
+                <View style={[styles.debugInfo, { backgroundColor: theme.dark ? "#2a2a2a" : "#f5f5f5" }]}>
+                  <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
                     User: {user?.email} | Subscription: {hasSubscription ? '✅ YES' : '❌ NO'} | Loading: {userLoading ? 'YES' : 'NO'}
                   </Text>
                 </View>
 
                 {/* TanStack Query Debug Component */}
-                <View style={styles.tanstackDebug}>
-                  <Text style={styles.tanstackTitle}>🔧 TanStack Query Debug</Text>
+                <View style={[styles.tanstackDebug, {
+                  backgroundColor: theme.dark ? "#1a1a1a" : "#e8f4fd",
+                  borderColor: theme.dark ? "#444" : "#4A90E2"
+                }]}>
+                  <Text style={[styles.tanstackTitle, { color: theme.dark ? "#fff" : "#333" }]}>🔧 TanStack Query Debug</Text>
 
                   <View style={styles.tanstackRow}>
-                    <Text style={styles.tanstackLabel}>Auth Token:</Text>
+                    <Text style={[styles.tanstackLabel, { color: theme.dark ? "#ccc" : "#666" }]}>Auth Token:</Text>
                     <Text style={[styles.tanstackValue, { color: hasToken ? '#4CAF50' : '#F44336' }]}>
                       {isCheckingToken ? 'CHECKING...' : hasToken ? '✅ FOUND' : '❌ MISSING'}
                     </Text>
                   </View>
 
                   <View style={styles.tanstackRow}>
-                    <Text style={styles.tanstackLabel}>Loading:</Text>
+                    <Text style={[styles.tanstackLabel, { color: theme.dark ? "#ccc" : "#666" }]}>Loading:</Text>
                     <Text style={[styles.tanstackValue, { color: userLoading ? '#FF9800' : '#4CAF50' }]}>
                       {userLoading ? 'YES' : 'NO'}
                     </Text>
                   </View>
 
                   <View style={styles.tanstackRow}>
-                    <Text style={styles.tanstackLabel}>Authenticated:</Text>
+                    <Text style={[styles.tanstackLabel, { color: theme.dark ? "#ccc" : "#666" }]}>Authenticated:</Text>
                     <Text style={[styles.tanstackValue, { color: isAuthenticated ? '#4CAF50' : '#F44336' }]}>
                       {isAuthenticated ? '✅ YES' : '❌ NO'}
                     </Text>
                   </View>
 
                   <View style={styles.tanstackRow}>
-                    <Text style={styles.tanstackLabel}>User:</Text>
-                    <Text style={styles.tanstackValue}>
+                    <Text style={[styles.tanstackLabel, { color: theme.dark ? "#ccc" : "#666" }]}>User:</Text>
+                    <Text style={[styles.tanstackValue, { color: theme.dark ? "#fff" : "#333" }]}>
                       {user ? `${user.email}` : needsLogin ? 'Need Login' : 'Loading...'}
                     </Text>
                   </View>
 
                   <View style={styles.tanstackRow}>
-                    <Text style={styles.tanstackLabel}>Subscription:</Text>
+                    <Text style={[styles.tanstackLabel, { color: theme.dark ? "#ccc" : "#666" }]}>Subscription:</Text>
                     <Text style={[styles.tanstackValue, { color: hasSubscription ? '#4CAF50' : '#F44336' }]}>
                       {hasSubscription ? '✅ ACTIVE' : '❌ NONE'}
                     </Text>
                   </View>
 
                   <View style={styles.tanstackRow}>
-                    <Text style={styles.tanstackLabel}>Stripe ID:</Text>
-                    <Text style={styles.tanstackValue}>
+                    <Text style={[styles.tanstackLabel, { color: theme.dark ? "#ccc" : "#666" }]}>Stripe ID:</Text>
+                    <Text style={[styles.tanstackValue, { color: theme.dark ? "#fff" : "#333" }]}>
                       {user?.stripeCustomerId || 'None'}
                     </Text>
                   </View>
@@ -241,7 +244,7 @@ export default function HomeScreen() {
                     </View>
                   )}
 
-                  <Text style={styles.tanstackTimestamp}>
+                  <Text style={[styles.tanstackTimestamp, { color: theme.dark ? "#888" : "#999" }]}>
                     Last updated: {new Date().toLocaleTimeString()}
                   </Text>
                 </View>
@@ -273,12 +276,10 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: fontSizes.FONT24,
     fontWeight: 'bold',
-    color: '#000',
     marginBottom: verticalScale(5),
   },
   sectionSubtitle: {
     fontSize: fontSizes.FONT14,
-    color: '#666',
   },
   refreshButton: {
     flexDirection: 'row',
@@ -296,29 +297,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   debugInfo: {
-    backgroundColor: '#f5f5f5',
     padding: scale(8),
     borderRadius: scale(6),
     marginTop: verticalScale(5),
   },
   debugText: {
     fontSize: fontSizes.FONT10,
-    color: '#666',
     fontFamily: 'monospace',
   },
   tanstackDebug: {
-    backgroundColor: '#e8f4fd',
     padding: scale(12),
     borderRadius: scale(8),
     marginTop: verticalScale(8),
     borderWidth: 1,
-    borderColor: '#4A90E2',
   },
   tanstackTitle: {
     fontSize: 14,
     fontWeight: 'bold',
     marginBottom: verticalScale(8),
-    color: '#333',
   },
   tanstackRow: {
     flexDirection: 'row',
@@ -327,19 +323,16 @@ const styles = StyleSheet.create({
   },
   tanstackLabel: {
     fontSize: 12,
-    color: '#666',
     fontWeight: '600',
   },
   tanstackValue: {
     fontSize: 12,
-    color: '#333',
     fontFamily: 'monospace',
     flex: 1,
     textAlign: 'right',
   },
   tanstackTimestamp: {
     fontSize: 10,
-    color: '#999',
     marginTop: verticalScale(8),
     textAlign: 'center',
     fontStyle: 'italic',
@@ -378,12 +371,10 @@ const styles = StyleSheet.create({
   serviceTitle: {
     fontSize: fontSizes.FONT18,
     fontWeight: 'bold',
-    color: '#000',
     marginBottom: verticalScale(4),
   },
   serviceSubtitle: {
     fontSize: fontSizes.FONT14,
-    color: '#666',
     marginBottom: verticalScale(4),
   },
   comingSoon: {
