@@ -20,12 +20,30 @@ export default function AuthModal({
         "115355708216-m9udpjkdfq29rf6fbc3r08d4mb7t7evg.apps.googleusercontent.com", // required for web sign-in
       iosClientId:
         "115355708216-kkavg7bmm4pdr58d8b769hhhsu3f6sgm.apps.googleusercontent.com", // iOS only
+      forceCodeForRefreshToken: true, // Force refresh token
+      accountName: '', // Clear account name to force selection
     });
   }, []);
 
   const googleSignIn = async () => {
     try {
+      console.log('🔄 Starting Google Sign-In process...');
+
+      // Check if user is already signed in and sign out first to force account selection
+      try {
+        const isSignedIn = await GoogleSignin.isSignedIn();
+        if (isSignedIn) {
+          console.log('🔄 User already signed in, signing out to force account selection...');
+          await GoogleSignin.signOut();
+          console.log('✅ Previous Google session cleared');
+        }
+      } catch (signOutError) {
+        console.log('ℹ️ No previous Google session to clear:', signOutError);
+      }
+
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+
+      // Sign in with prompt to select account
       const userInfo = await GoogleSignin.signIn();
 
       console.log("Google User Info:", userInfo);
@@ -46,6 +64,15 @@ export default function AuthModal({
       });
     } catch (error) {
       console.error("Google Sign-In Error:", error);
+
+      // Handle specific error cases
+      if (error.code === 'SIGN_IN_CANCELLED') {
+        console.log('ℹ️ User cancelled Google Sign-In');
+      } else if (error.code === 'IN_PROGRESS') {
+        console.log('ℹ️ Google Sign-In already in progress');
+      } else if (error.code === 'PLAY_SERVICES_NOT_AVAILABLE') {
+        console.error('❌ Google Play Services not available');
+      }
     }
   };
 

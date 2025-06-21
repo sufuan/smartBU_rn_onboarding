@@ -250,6 +250,55 @@ app.get("/me", isAuthenticated as any, asyncHandler(async (req: AuthenticatedReq
   }
 }));
 
+// Get User Slots Endpoint - For "My Bookings" section
+app.get("/api/user-slots", isAuthenticated as any, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const now = new Date();
+
+    console.log(`🎯 Fetching user slots for user: ${userId}`);
+
+    // Get user's active slots (upcoming and current)
+    const userSlots = await prisma.slot.findMany({
+      where: {
+        userId,
+        status: 'Reserved', // Only show reserved slots
+        slotTime: {
+          gte: now, // Only future slots (not expired)
+        },
+      },
+      include: {
+        machine: {
+          select: {
+            id: true,
+            machineId: true,
+            location: true,
+            status: true,
+          },
+        },
+      },
+      orderBy: {
+        slotTime: 'asc', // Earliest first
+      },
+    });
+
+    console.log(`✅ Found ${userSlots.length} active user slots`);
+
+    res.status(200).json({
+      success: true,
+      slots: userSlots,
+      count: userSlots.length
+    });
+  } catch (error) {
+    console.error("❌ Error fetching user slots:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      slots: []
+    });
+  }
+}));
+
 // Get All Machines Endpoint
 app.get("/api/machines", asyncHandler(async (req: Request, res: Response) => {
   try {
@@ -354,140 +403,225 @@ app.get("/api/slots", asyncHandler(async (req: Request, res: Response) => {
   }
 }));
 
-// Book Slot Endpoint - Updated version
+// Book Slot Endpoint - Enhanced with race condition protection and better error handling
 app.post("/api/book-slot", isAuthenticated as any, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { slotTime, machineId } = req.body as BookSlotRequest;
     const userId = req.user.id;
 
+    console.log(`🎯 Slot booking request: User ${userId}, Machine ${machineId}, Time ${slotTime}`);
+
     if (!slotTime || !machineId) {
-      return res.status(400).json({ message: "slotTime and machineId are required" });
+      return res.status(400).json({
+        message: "slotTime and machineId are required",
+        error: "MISSING_FIELDS"
+      });
     }
 
     // Check if user has a subscription
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { stripeCustomerId: true },
+      select: { stripeCustomerId: true, name: true },
     });
 
     if (!user?.stripeCustomerId) {
-      return res.status(403).json({ 
+      return res.status(403).json({
         message: "Subscription required to book slots",
         error: "NO_SUBSCRIPTION"
       });
     }
 
     const slotTimeDate = new Date(slotTime);
-
-    // Check if the machine exists and is available
-    const machine = await prisma.machine.findUnique({ where: { id: machineId } });
-    if (!machine || machine.status === 'Offline') {
-      return res.status(404).json({ message: "Machine not found or offline" });
-    }
-
-    // Check if the slot is already booked
-    const existingSlot = await prisma.slot.findFirst({
-      where: {
-        machineId,
-        slotTime: slotTimeDate,
-        status: {
-          in: ['Reserved', 'Completed'],
-        },
-      },
-    });
-
-    if (existingSlot) {
-      return res.status(409).json({ 
-        message: "Slot already booked",
-        error: "SLOT_UNAVAILABLE" 
-      });
-    }
+    const now = new Date();
 
     // Check if the slot is in the past
-    const now = new Date();
     if (slotTimeDate < now) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: "Cannot book slots in the past",
         error: "PAST_SLOT"
       });
     }
 
-    // Check if the user has already booked a slot for the same day
-    const startOfDay = new Date(slotTimeDate);
-    startOfDay.setUTCHours(0, 0, 0, 0);
-    
-    const endOfDay = new Date(slotTimeDate);
-    endOfDay.setUTCHours(23, 59, 59, 999);
-
-    const userDailySlotCount = await prisma.slot.count({
-      where: {
-        userId,
-        slotTime: {
-          gte: startOfDay,
-          lte: endOfDay,
-        },
-        status: 'Reserved',
-      },
+    // Check if the machine exists and is available
+    const machine = await prisma.machine.findUnique({
+      where: { id: machineId },
+      select: { id: true, machineId: true, status: true }
     });
 
-    if (userDailySlotCount >= 1) {
-      return res.status(409).json({ 
-        message: "You can only book one slot per day",
-        error: "DAILY_LIMIT_EXCEEDED"
+    if (!machine) {
+      return res.status(404).json({
+        message: "Machine not found",
+        error: "MACHINE_NOT_FOUND"
       });
     }
 
-    // Generate a random auth code
-    const authCode = generateAuthCode();
+    if (machine.status === 'Offline') {
+      return res.status(409).json({
+        message: "Machine is currently offline",
+        error: "MACHINE_OFFLINE"
+      });
+    }
 
-    // Create the slot
-    const newSlot = await prisma.slot.create({
-      data: {
-        userId,
-        machineId,
-        slotTime: slotTimeDate,
-        duration: 3600000, // 1 hour in milliseconds
-        authCode,
-        status: 'Reserved',
-      },
+    // Use transaction to prevent race conditions
+    const result = await prisma.$transaction(async (tx) => {
+      // Check if the slot is already booked (within transaction)
+      const existingSlot = await tx.slot.findFirst({
+        where: {
+          machineId,
+          slotTime: slotTimeDate,
+          status: {
+            in: ['Reserved', 'Completed'],
+          },
+        },
+        select: { id: true, userId: true, user: { select: { name: true } } }
+      });
+
+      if (existingSlot) {
+        const isOwnSlot = existingSlot.userId === userId;
+        throw new Error(JSON.stringify({
+          status: 409,
+          message: isOwnSlot
+            ? "You have already booked this slot"
+            : `This slot has been taken by another user`,
+          error: "SLOT_UNAVAILABLE",
+          details: { isOwnSlot, bookedBy: existingSlot.user?.name }
+        }));
+      }
+
+      // Check daily limit (within transaction)
+      const startOfDay = new Date(slotTimeDate);
+      startOfDay.setUTCHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(slotTimeDate);
+      endOfDay.setUTCHours(23, 59, 59, 999);
+
+      const userDailySlots = await tx.slot.findMany({
+        where: {
+          userId,
+          slotTime: {
+            gte: startOfDay,
+            lte: endOfDay,
+          },
+          status: 'Reserved',
+          slotTime: {
+            gte: now, // Only count future slots, not expired ones
+          },
+        },
+        select: { id: true, slotTime: true, machine: { select: { machineId: true } } }
+      });
+
+      if (userDailySlots.length >= 1) {
+        const existingSlot = userDailySlots[0];
+        throw new Error(JSON.stringify({
+          status: 409,
+          message: "You can only book one slot per day",
+          error: "DAILY_LIMIT_EXCEEDED",
+          details: {
+            existingSlot: {
+              machine: existingSlot.machine.machineId,
+              time: existingSlot.slotTime.toISOString()
+            }
+          }
+        }));
+      }
+
+      // Generate a random auth code
+      const authCode = generateAuthCode();
+
+      // Create the slot (within transaction)
+      const newSlot = await tx.slot.create({
+        data: {
+          userId,
+          machineId,
+          slotTime: slotTimeDate,
+          duration: 3600000, // 1 hour in milliseconds
+          authCode,
+          status: 'Reserved',
+        },
+        include: {
+          machine: { select: { machineId: true } }
+        }
+      });
+
+      // Log the usage (within transaction)
+      await tx.usageLog.create({
+        data: {
+          userId,
+          machineId,
+          slotId: newSlot.id,
+          action: 'SlotBooked',
+        },
+      });
+
+      // Create a notification for the user (within transaction)
+      await tx.notification.create({
+        data: {
+          userId,
+          slotId: newSlot.id,
+          title: "Slot Booked!",
+          message: `Your slot for ${machine.machineId} at ${slotTimeDate.toLocaleString()} is confirmed. Your auth code is ${authCode}.`,
+          redirect_link: `/slot/${newSlot.id}`,
+        },
+      });
+
+      return { newSlot, authCode };
     });
 
-    // Log the usage
-    await prisma.usageLog.create({
-      data: {
-        userId,
-        machineId,
-        slotId: newSlot.id,
-        action: 'SlotBooked',
-      },
-    });
+    console.log(`✅ Slot booked successfully: ${result.newSlot.id}`);
 
-    // Create a notification for the user
-    await prisma.notification.create({
-      data: {
-        userId,
-        slotId: newSlot.id,
-        title: "Slot Booked!",
-        message: `Your slot for ${machine.machineId} at ${slotTimeDate.toLocaleString()} is confirmed. Your auth code is ${authCode}.`,        redirect_link: `/slot/${newSlot.id}`,
-      },
-    });
-
-    // Send MQTT message to ESP32 to update display
-    sendMQTTMessage(`laundry/${machine.machineId}/display`, {
-      line1: "Slot Reserved",
-      line2: `By: ${req.user.name}`,
-    });
+    // Send MQTT message to ESP32 to update display (outside transaction)
+    try {
+      sendMQTTMessage(`laundry/${machine.machineId}/display`, {
+        line1: "Slot Reserved",
+        line2: `By: ${user.name}`,
+      });
+    } catch (mqttError) {
+      console.warn("⚠️ MQTT message failed:", mqttError);
+      // Don't fail the booking if MQTT fails
+    }
 
     res.status(201).json({
       message: "Slot booked successfully",
-      slot: {
-        ...newSlot,
-        authCode,
+      success: true,
+      booking: {
+        id: result.newSlot.id,
+        machineId: machine.machineId,
+        slotTime: result.newSlot.slotTime.toISOString(),
+        authCode: result.authCode,
+        duration: result.newSlot.duration,
+        status: result.newSlot.status,
       },
     });
-  } catch (error) {
+
+  } catch (error: any) {
     console.error("❌ Error booking slot:", error);
-    res.status(500).json({ message: "Internal server error" });
+
+    // Handle custom transaction errors
+    if (error.message && error.message.startsWith('{')) {
+      try {
+        const errorData = JSON.parse(error.message);
+        return res.status(errorData.status).json({
+          message: errorData.message,
+          error: errorData.error,
+          details: errorData.details
+        });
+      } catch (parseError) {
+        console.error("❌ Error parsing custom error:", parseError);
+      }
+    }
+
+    // Handle Prisma unique constraint violations
+    if (error.code === 'P2002') {
+      return res.status(409).json({
+        message: "This slot has been taken by another user",
+        error: "SLOT_RACE_CONDITION"
+      });
+    }
+
+    res.status(500).json({
+      message: "Internal server error",
+      error: "INTERNAL_ERROR"
+    });
   }
 }));
 
@@ -624,6 +758,149 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
   }
 }));
 
+// Get User Slot History Endpoint - For expired/completed slots
+app.get("/api/user-slot-history", isAuthenticated as any, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const { limit = 20, offset = 0 } = req.query;
+
+    console.log(`🎯 Fetching slot history for user: ${userId}`);
+
+    // Get user's completed/expired slots
+    const slotHistory = await prisma.slot.findMany({
+      where: {
+        userId,
+        OR: [
+          { status: 'Completed' }, // Includes both completed and expired slots
+          { status: 'Cancelled' },
+          {
+            status: 'Reserved',
+            slotTime: {
+              lt: new Date(), // Past slots that are still marked as Reserved
+            }
+          }
+        ],
+      },
+      include: {
+        machine: {
+          select: {
+            id: true,
+            machineId: true,
+            location: true,
+          },
+        },
+      },
+      orderBy: {
+        slotTime: 'desc', // Most recent first
+      },
+      take: Number(limit),
+      skip: Number(offset),
+    });
+
+    console.log(`✅ Found ${slotHistory.length} historical slots`);
+
+    res.status(200).json({
+      success: true,
+      slots: slotHistory,
+      count: slotHistory.length
+    });
+  } catch (error) {
+    console.error("❌ Error fetching slot history:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      slots: []
+    });
+  }
+}));
+
+// Cleanup Expired Slots Endpoint - Moves expired slots to history
+app.post("/api/cleanup-expired-slots", isAuthenticated as any, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const now = new Date();
+
+    console.log(`🧹 Starting expired slots cleanup at ${now.toISOString()}`);
+
+    // Find all expired slots (slotTime + duration < now)
+    const expiredSlots = await prisma.slot.findMany({
+      where: {
+        status: 'Reserved',
+        slotTime: {
+          lt: new Date(now.getTime() - 60 * 60 * 1000), // 1 hour ago (slot duration)
+        },
+      },
+      include: {
+        machine: { select: { machineId: true } },
+        user: { select: { name: true, email: true } },
+      },
+    });
+
+    if (expiredSlots.length === 0) {
+      console.log('✅ No expired slots found');
+      return res.status(200).json({
+        success: true,
+        message: 'No expired slots found',
+        expiredCount: 0
+      });
+    }
+
+    console.log(`🔄 Found ${expiredSlots.length} expired slots to cleanup`);
+
+    // Update expired slots to 'Completed' status (expired slots)
+    const updateResult = await prisma.slot.updateMany({
+      where: {
+        id: { in: expiredSlots.map(slot => slot.id) },
+      },
+      data: {
+        status: 'Completed',
+      },
+    });
+
+    // Log the cleanup
+    for (const slot of expiredSlots) {
+      await prisma.usageLog.create({
+        data: {
+          userId: slot.userId,
+          machineId: slot.machineId,
+          slotId: slot.id,
+          action: 'SlotExpired',
+        },
+      });
+
+      // Create notification for expired slot
+      await prisma.notification.create({
+        data: {
+          userId: slot.userId,
+          slotId: slot.id,
+          title: "Slot Expired",
+          message: `Your slot for ${slot.machine.machineId} at ${new Date(slot.slotTime).toLocaleString()} has expired and moved to history.`,
+          redirect_link: `/history`,
+        },
+      });
+    }
+
+    console.log(`✅ Successfully expired ${updateResult.count} slots`);
+
+    res.status(200).json({
+      success: true,
+      message: `Successfully expired ${updateResult.count} slots`,
+      expiredCount: updateResult.count,
+      expiredSlots: expiredSlots.map(slot => ({
+        id: slot.id,
+        machine: slot.machine.machineId,
+        slotTime: slot.slotTime,
+        user: slot.user.email,
+      }))
+    });
+  } catch (error) {
+    console.error("❌ Error cleaning up expired slots:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
+  }
+}));
+
 // Cancel Slot Endpoint
 app.post("/api/cancel-slot", isAuthenticated as any, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -697,9 +974,16 @@ app.post("/api/cancel-slot", isAuthenticated as any, asyncHandler(async (req: Au
   }
 }));
 
+// Start background jobs for slot management
+import { startBackgroundJobs } from './background-jobs.js';
+
 // Start Server
 const PORT = parseInt(process.env.PORT || "3000");
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Express server running on port ${PORT}`);
   console.log("✅ Connected to MongoDB");
+
+  // Start background jobs for automatic slot cleanup
+  console.log('🔧 Starting background jobs...');
+  startBackgroundJobs();
 });

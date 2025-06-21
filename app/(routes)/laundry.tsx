@@ -1,4 +1,6 @@
 import { useTheme } from "@/context/theme.context";
+import { useBookSlotMutation } from "@/hooks/mutations/useSlotMutations";
+import { useUserSlotsQuery } from "@/hooks/queries/useMachineQueries";
 import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import {
   fontSizes
@@ -36,48 +38,36 @@ interface MachineWithSlots extends MachineType {
 export default function LaundryScreen() {
   const { theme } = useTheme();
   const { user, hasSubscription, isLoading: userLoading } = useSubscriptionStatus();
+  const bookSlotMutation = useBookSlotMutation();
+
+  // Fetch user's booked slots
+  const { userSlots = [], isLoading: userSlotsLoading } = useUserSlotsQuery(user?.id || '');
 
   const [machines, setMachines] = useState<MachineWithSlots[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checkingSubscription, setCheckingSubscription] = useState(true);
+  const [bookingSlots, setBookingSlots] = useState<Set<string>>(new Set()); // Track individual slot booking states
 
   // Check if user has active subscription (using TanStack Query)
   const hasActiveSubscription = () => {
     return hasSubscription;
   };
 
-  // Check subscription when user data is available
+  // Check subscription when component mounts (simplified with TanStack Query)
   useEffect(() => {
-    // If user data is not yet available, we wait. The UI shows "Loading user data...".
-    if (!user) {
-      console.log('⏳ LaundryScreen: Waiting for user data...');
-      return; // Exit until we have user data
+    if (!userLoading && !hasSubscription) {
+      console.log('❌ LaundryScreen: No subscription, redirecting to no-package');
+      router.replace({
+        pathname: "/(routes)/no-package" as any,
+        params: { serviceName: "Your Laundry" }
+      });
+    } else if (!userLoading && hasSubscription) {
+      console.log('✅ LaundryScreen: Subscription confirmed, staying on page');
+      setCheckingSubscription(false);
     }
-
-    // Once we have user data, we start the subscription check.
-    console.log('🔍 LaundryScreen: User data found, checking subscription...');
-    
-    // The UI will show "Checking subscription..." because `checkingSubscription` is initially true.
-    const subscriptionCheckTimeout = setTimeout(() => {
-      if (hasActiveSubscription()) {
-        // If subscription is active, we stop the check and allow the component to render the machine list.
-        console.log('✅ LaundryScreen: Active subscription found.');
-        setCheckingSubscription(false);
-      } else {
-        // If no subscription, redirect to the "no-package" screen.
-        console.log('❌ LaundryScreen: No active subscription. Redirecting...');
-        router.replace({
-          pathname: "/(routes)/no-package" as any,
-          params: { serviceName: "Your Laundry" },
-        });
-      }
-    }, 500); // A small delay can prevent UI flickering.
-
-    // Cleanup function to clear the timeout if the component unmounts or `user` changes.
-    return () => clearTimeout(subscriptionCheckTimeout);
-  }, [user]); // This effect runs whenever the `user` object changes.
+  }, [userLoading, hasSubscription]); // Depend on TanStack Query states
 
   // Fetch machines from API with timeout and optimization
   const fetchMachines = useCallback(async () => {
@@ -175,14 +165,29 @@ export default function LaundryScreen() {
     fetchMachines();
   }, [fetchMachines]);
 
-  // Handle slot booking (using TanStack Query)
+  // Handle slot booking (using TanStack Query mutation with individual slot tracking)
   const handleBookSlot = useCallback(async (machineId: string, slotTime: Date, machineLocation?: string) => {
     console.log('🎯 LaundryScreen: Slot booking initiated for machine:', machineId);
 
+    // Create unique slot identifier
+    const slotId = `${machineId}-${slotTime.getTime()}`;
+
+    // Check if this specific slot is already being booked
+    if (bookingSlots.has(slotId)) {
+      console.log('⏳ LaundryScreen: Slot already being booked:', slotId);
+      return;
+    }
+
+    // Check if user exists
+    if (!user) {
+      Alert.alert('Error', 'User not found. Please try again.');
+      return;
+    }
+
     // Check subscription using TanStack Query
     console.log('🔍 LaundryScreen: Checking subscription for slot booking:', {
-      userId: user?.id,
-      email: user?.email,
+      userId: user.id,
+      email: user.email,
       hasSubscription: hasActiveSubscription()
     });
 
@@ -205,17 +210,37 @@ export default function LaundryScreen() {
       return;
     }
 
-    console.log('✅ LaundryScreen: Subscription confirmed, navigating to slot booking');
-    // Navigate to SlotBookingScreen with parameters
-    router.push({
-      pathname: "/(routes)/slot-booking" as any,
-      params: {
-        machineId: machineId,
-        slotTime: slotTime.toISOString(),
-        machineLocation: machineLocation || "Unknown Location",
+    console.log('✅ LaundryScreen: Subscription confirmed, booking slot with TanStack Query');
+
+    // Add slot to booking state
+    setBookingSlots(prev => new Set(prev).add(slotId));
+
+    // Use TanStack Query mutation for slot booking
+    bookSlotMutation.mutate({
+      userId: user.id,
+      machineId,
+      slotTime: slotTime.toISOString(),
+    }, {
+      onSuccess: () => {
+        console.log('✅ LaundryScreen: Slot booking successful');
+        // Remove slot from booking state
+        setBookingSlots(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(slotId);
+          return newSet;
+        });
       },
+      onError: (error) => {
+        console.error('❌ LaundryScreen: Slot booking failed:', error);
+        // Remove slot from booking state
+        setBookingSlots(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(slotId);
+          return newSet;
+        });
+      }
     });
-  }, [user, hasSubscription]);
+  }, [user, hasSubscription, bookSlotMutation, bookingSlots, setBookingSlots]);
 
   // Format time for display
   const formatTime = (date: Date) => {
@@ -226,25 +251,47 @@ export default function LaundryScreen() {
     });
   };
 
-  // Render slot item
-  const renderSlot = ({ item: slot, machineLocation }: { item: AvailableSlot, machineLocation?: string }) => (
-    <View style={[styles.slotCard, { backgroundColor: theme.dark ? "#2a2a2a" : "#f8f9fa" }]}>
-      <View style={styles.slotInfo}>
-        <Text style={[styles.slotTime, { color: theme.dark ? "#fff" : "#000" }]}>
-          {formatTime(slot.slotTime)}
-        </Text>
-        <Text style={[styles.slotDuration, { color: theme.dark ? "#ccc" : "#666" }]}>
-          30 minutes
-        </Text>
+  // Render slot item with individual loading state and booked status
+  const renderSlot = ({ item: slot, machineLocation }: { item: AvailableSlot, machineLocation?: string }) => {
+    const slotId = `${slot.machineId}-${slot.slotTime.getTime()}`;
+    const isBookingThisSlot = bookingSlots.has(slotId);
+
+    // Check if this slot is already booked by the current user
+    const isSlotBookedByUser = userSlots.some(userSlot =>
+      userSlot.machineId === slot.machineId &&
+      new Date(userSlot.slotTime).getTime() === slot.slotTime.getTime()
+    );
+
+    const isDisabled = isBookingThisSlot || isSlotBookedByUser;
+
+    return (
+      <View style={[styles.slotCard, { backgroundColor: theme.dark ? "#2a2a2a" : "#f8f9fa" }]}>
+        <View style={styles.slotInfo}>
+          <Text style={[styles.slotTime, { color: theme.dark ? "#fff" : "#000" }]}>
+            {formatTime(slot.slotTime)}
+          </Text>
+          <Text style={[styles.slotDuration, { color: theme.dark ? "#ccc" : "#666" }]}>
+            30 minutes
+          </Text>
+        </View>
+        <Pressable
+          style={[
+            styles.bookButton,
+            {
+              backgroundColor: isSlotBookedByUser ? "#28a745" : isBookingThisSlot ? "#ccc" : "#4A90E2",
+              opacity: isDisabled ? 0.7 : 1
+            }
+          ]}
+          onPress={() => !isDisabled && handleBookSlot(slot.machineId, slot.slotTime, machineLocation)}
+          disabled={isDisabled}
+        >
+          <Text style={styles.bookButtonText}>
+            {isSlotBookedByUser ? "Booked" : isBookingThisSlot ? "Booking..." : "Book Slot"}
+          </Text>
+        </Pressable>
       </View>
-      <Pressable
-        style={[styles.bookButton, { backgroundColor: "#4A90E2" }]}
-        onPress={() => handleBookSlot(slot.machineId, slot.slotTime, machineLocation)}
-      >
-        <Text style={styles.bookButtonText}>Book Slot</Text>
-      </Pressable>
-    </View>
-  );
+    );
+  };
 
   // Render machine item
   const renderMachine = ({ item: machine }: { item: MachineWithSlots }) => (
@@ -296,14 +343,14 @@ export default function LaundryScreen() {
     </View>
   );
 
-  if (checkingSubscription || !user) {
+  if (userLoading || checkingSubscription) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.dark ? "#131313" : "#fff" }]}>
         <StatusBar barStyle={theme.dark ? "light-content" : "dark-content"} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#4A90E2" />
           <Text style={[styles.loadingText, { color: theme.dark ? "#ccc" : "#666" }]}>
-            {!user ? "Loading user data..." : "Checking subscription..."}
+            {userLoading ? "Loading user data..." : "Checking subscription..."}
           </Text>
         </View>
       </SafeAreaView>
@@ -363,6 +410,51 @@ export default function LaundryScreen() {
               tintColor="#4A90E2"
             />
           }
+          ListHeaderComponent={() => (
+            <View style={styles.myBookingsSection}>
+              <Text style={[styles.myBookingsTitle, { color: theme.dark ? "#fff" : "#000" }]}>
+                My Bookings
+              </Text>
+              {userSlotsLoading ? (
+                <View style={styles.myBookingsLoading}>
+                  <ActivityIndicator size="small" color="#4A90E2" />
+                  <Text style={[styles.loadingText, { color: theme.dark ? "#ccc" : "#666" }]}>
+                    Loading your bookings...
+                  </Text>
+                </View>
+              ) : userSlots.length > 0 ? (
+                <FlatList
+                  data={userSlots}
+                  renderItem={({ item: slot }) => (
+                    <View style={[styles.myBookingCard, { backgroundColor: theme.dark ? "#2a2a2a" : "#f8f9fa" }]}>
+                      <View style={styles.myBookingInfo}>
+                        <Text style={[styles.myBookingMachine, { color: theme.dark ? "#fff" : "#000" }]}>
+                          {slot.machine?.machineId || slot.machineId}
+                        </Text>
+                        <Text style={[styles.myBookingTime, { color: theme.dark ? "#ccc" : "#666" }]}>
+                          {formatTime(new Date(slot.slotTime))}
+                        </Text>
+                        <Text style={[styles.myBookingDate, { color: theme.dark ? "#ccc" : "#666" }]}>
+                          {new Date(slot.slotTime).toLocaleDateString()}
+                        </Text>
+                      </View>
+                      <View style={[styles.myBookingStatus, { backgroundColor: "#28a745" }]}>
+                        <Text style={styles.myBookingStatusText}>Booked</Text>
+                      </View>
+                    </View>
+                  )}
+                  keyExtractor={(slot) => slot.id}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.myBookingsContainer}
+                />
+              ) : (
+                <Text style={[styles.noBookingsText, { color: theme.dark ? "#ccc" : "#666" }]}>
+                  No bookings yet. Book your first slot below!
+                </Text>
+              )}
+            </View>
+          )}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="business-outline" size={64} color="#ccc" />
@@ -522,6 +614,63 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   noSlotsText: {
+    fontSize: fontSizes.FONT14,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: verticalScale(20),
+  },
+  // My Bookings Section Styles
+  myBookingsSection: {
+    marginBottom: verticalScale(20),
+  },
+  myBookingsTitle: {
+    fontSize: fontSizes.FONT18,
+    fontWeight: 'bold',
+    marginBottom: verticalScale(12),
+  },
+  myBookingsLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: verticalScale(20),
+  },
+  myBookingsContainer: {
+    paddingRight: scale(20),
+  },
+  myBookingCard: {
+    borderRadius: scale(8),
+    padding: scale(12),
+    marginRight: scale(12),
+    minWidth: scale(140),
+    alignItems: 'center',
+  },
+  myBookingInfo: {
+    alignItems: 'center',
+    marginBottom: verticalScale(8),
+  },
+  myBookingMachine: {
+    fontSize: fontSizes.FONT14,
+    fontWeight: 'bold',
+    marginBottom: verticalScale(2),
+  },
+  myBookingTime: {
+    fontSize: fontSizes.FONT12,
+    marginBottom: verticalScale(2),
+  },
+  myBookingDate: {
+    fontSize: fontSizes.FONT10,
+  },
+  myBookingStatus: {
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(4),
+    borderRadius: scale(12),
+  },
+  myBookingStatusText: {
+    color: '#fff',
+    fontSize: fontSizes.FONT10,
+    fontWeight: '600',
+  },
+  noBookingsText: {
     fontSize: fontSizes.FONT14,
     fontStyle: 'italic',
     textAlign: 'center',

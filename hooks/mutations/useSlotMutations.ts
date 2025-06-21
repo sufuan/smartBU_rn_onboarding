@@ -34,30 +34,84 @@ export function useBookSlotMutation() {
     },
     onError: (error, variables, context) => {
       console.error('❌ Slot booking failed:', error);
-      
+
       // Rollback optimistic updates
       if (context?.previousMachineSlots) {
         queryClient.setQueryData(
-          queryKeys.machineSlots(variables.machineId), 
+          queryKeys.machineSlots(variables.machineId),
           context.previousMachineSlots
         );
       }
       if (context?.previousUserSlots) {
         queryClient.setQueryData(
-          queryKeys.userSlots(variables.userId), 
+          queryKeys.userSlots(variables.userId),
           context.previousUserSlots
         );
       }
 
-      // Handle specific error cases
-      const status = (error as any)?.response?.status;
+      // Handle specific error cases with detailed messages
+      const response = (error as any)?.response;
+      const status = response?.status;
+      const errorData = response?.data;
+      const errorType = errorData?.error;
+
+      let title = 'Booking Failed';
+      let message = 'Unable to book slot. Please try again.';
+
       if (status === 403) {
-        Alert.alert('Subscription Required', 'You need an active subscription to book slots.');
+        title = 'Subscription Required';
+        message = 'You need an active subscription to book slots.';
       } else if (status === 409) {
-        Alert.alert('Slot Unavailable', 'This slot is no longer available or you have reached your daily limit.');
-      } else {
-        Alert.alert('Booking Failed', 'Unable to book slot. Please try again.');
+        switch (errorType) {
+          case 'SLOT_UNAVAILABLE':
+            title = 'Slot Unavailable';
+            if (errorData?.details?.isOwnSlot) {
+              message = 'You have already booked this slot.';
+            } else if (errorData?.details?.bookedBy) {
+              message = `This slot has been taken by another user.`;
+            } else {
+              message = 'This slot is no longer available.';
+            }
+            break;
+          case 'DAILY_LIMIT_EXCEEDED':
+            title = 'Daily Limit Reached';
+            const existingSlot = errorData?.details?.existingSlot;
+            if (existingSlot) {
+              message = `You can only book one slot per day.\n\nYour existing booking:\nMachine: ${existingSlot.machine}\nTime: ${new Date(existingSlot.time).toLocaleString()}`;
+            } else {
+              message = 'You can only book one slot per day.';
+            }
+            break;
+          case 'MACHINE_OFFLINE':
+            title = 'Machine Unavailable';
+            message = 'This machine is currently offline. Please try another machine.';
+            break;
+          case 'SLOT_RACE_CONDITION':
+            title = 'Slot Just Taken';
+            message = 'This slot was just booked by another user. Please select a different time.';
+            break;
+          default:
+            message = errorData?.message || 'This slot is no longer available.';
+        }
+      } else if (status === 400) {
+        switch (errorType) {
+          case 'PAST_SLOT':
+            title = 'Invalid Time';
+            message = 'Cannot book slots in the past. Please select a future time.';
+            break;
+          case 'MISSING_FIELDS':
+            title = 'Invalid Request';
+            message = 'Missing required information. Please try again.';
+            break;
+          default:
+            message = errorData?.message || 'Invalid booking request.';
+        }
+      } else if (status === 404) {
+        title = 'Machine Not Found';
+        message = 'The selected machine is not available.';
       }
+
+      Alert.alert(title, message);
     },
     onSuccess: (data, variables) => {
       console.log('✅ Slot booked successfully:', data);

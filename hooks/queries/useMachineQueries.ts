@@ -7,11 +7,12 @@ export function useMachinesQuery() {
   const query = useQuery({
     queryKey: queryKeys.machines,
     queryFn: apiService.getMachines,
-    staleTime: 1 * 60 * 1000, // 1 minute - machine data changes moderately
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 20 * 1000, // 20 seconds - more frequent for slot availability
+    gcTime: 2 * 60 * 1000, // 2 minutes
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
-    refetchInterval: 30 * 1000, // Refetch every 30 seconds for real-time machine status
+    refetchInterval: 20 * 1000, // Refetch every 20 seconds for real-time slot updates
+    refetchIntervalInBackground: false, // Only when app is active
   });
 
   const invalidateMachines = () => {
@@ -93,11 +94,12 @@ export function useUserSlotsQuery(userId: string) {
   const query = useQuery({
     queryKey: queryKeys.userSlots(userId),
     queryFn: () => apiService.getUserSlots(userId),
-    staleTime: 1 * 60 * 1000, // 1 minute - user slots change less frequently
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 15 * 1000, // 15 seconds - user slots change frequently
+    gcTime: 2 * 60 * 1000, // 2 minutes
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
-    refetchInterval: 60 * 1000, // Refetch every minute for user's bookings
+    refetchInterval: 15 * 1000, // Refetch every 15 seconds for real-time updates
+    refetchIntervalInBackground: false, // Only when app is active
     enabled: !!userId, // Only run if userId is provided
   });
 

@@ -112,6 +112,16 @@ export const apiService = {
     return response.data.slots;
   },
 
+  async getUserSlotHistory(userId: string, limit = 20, offset = 0): Promise<SlotType[]> {
+    const response = await api.get(`/api/user-slot-history?limit=${limit}&offset=${offset}`);
+    return response.data.slots;
+  },
+
+  async cleanupExpiredSlots(): Promise<{ success: boolean; expiredCount: number; message: string }> {
+    const response = await api.post('/api/cleanup-expired-slots');
+    return response.data;
+  },
+
   async bookSlot(data: BookSlotRequest): Promise<BookSlotResponse> {
     const response = await api.post('/api/book-slot', data);
     return response.data;

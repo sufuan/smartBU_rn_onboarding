@@ -32,7 +32,15 @@ interface ServiceType {
 
 export default function HomeScreen() {
   const { theme } = useTheme();
-  const { user, hasSubscription, isLoading: userLoading } = useSubscriptionStatus();
+  const {
+    user,
+    hasSubscription,
+    isLoading: userLoading,
+    hasToken,
+    isCheckingToken,
+    isAuthenticated,
+    needsLogin
+  } = useSubscriptionStatus();
 
   const services: ServiceType[] = [
     {
@@ -185,6 +193,13 @@ export default function HomeScreen() {
                   <Text style={styles.tanstackTitle}>🔧 TanStack Query Debug</Text>
 
                   <View style={styles.tanstackRow}>
+                    <Text style={styles.tanstackLabel}>Auth Token:</Text>
+                    <Text style={[styles.tanstackValue, { color: hasToken ? '#4CAF50' : '#F44336' }]}>
+                      {isCheckingToken ? 'CHECKING...' : hasToken ? '✅ FOUND' : '❌ MISSING'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.tanstackRow}>
                     <Text style={styles.tanstackLabel}>Loading:</Text>
                     <Text style={[styles.tanstackValue, { color: userLoading ? '#FF9800' : '#4CAF50' }]}>
                       {userLoading ? 'YES' : 'NO'}
@@ -192,9 +207,16 @@ export default function HomeScreen() {
                   </View>
 
                   <View style={styles.tanstackRow}>
+                    <Text style={styles.tanstackLabel}>Authenticated:</Text>
+                    <Text style={[styles.tanstackValue, { color: isAuthenticated ? '#4CAF50' : '#F44336' }]}>
+                      {isAuthenticated ? '✅ YES' : '❌ NO'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.tanstackRow}>
                     <Text style={styles.tanstackLabel}>User:</Text>
                     <Text style={styles.tanstackValue}>
-                      {user ? `${user.email}` : 'Not loaded'}
+                      {user ? `${user.email}` : needsLogin ? 'Need Login' : 'Loading...'}
                     </Text>
                   </View>
 
@@ -211,6 +233,13 @@ export default function HomeScreen() {
                       {user?.stripeCustomerId || 'None'}
                     </Text>
                   </View>
+
+                  {needsLogin && (
+                    <View style={[styles.tanstackRow, { backgroundColor: '#FFF3CD', padding: 8, borderRadius: 4, marginTop: 8 }]}>
+                      <Text style={[styles.tanstackLabel, { color: '#856404' }]}>⚠️ Action Required:</Text>
+                      <Text style={[styles.tanstackValue, { color: '#856404' }]}>Please log in</Text>
+                    </View>
+                  )}
 
                   <Text style={styles.tanstackTimestamp}>
                     Last updated: {new Date().toLocaleTimeString()}

@@ -16,6 +16,7 @@ enum SlotStatus {
   Reserved
   Completed
   Cancelled
+  Expired
 }
 
 enum MachineStatus {

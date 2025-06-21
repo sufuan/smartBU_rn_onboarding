@@ -37,10 +37,43 @@ export default function ProfileScreen() {
   const { name, email, avatar } = useUserData();
   const insets = useSafeAreaInsets();
 
-  // --- Logout handler function ---
+  // --- Enhanced logout handler function ---
   const logoutHandler = async () => {
-    await SecureStore.deleteItemAsync("accessToken");
-    router.push("/(routes)/onboarding");
+    try {
+      console.log('🚪 Starting logout process...');
+
+      // 1. Sign out from Google to clear Google's session
+      try {
+        const isSignedIn = await GoogleSignin.isSignedIn();
+        if (isSignedIn) {
+          console.log('🔄 Signing out from Google...');
+          await GoogleSignin.signOut();
+          console.log('✅ Google sign-out successful');
+        } else {
+          console.log('ℹ️ User not signed in to Google');
+        }
+      } catch (googleError) {
+        console.error('⚠️ Google sign-out error (continuing with logout):', googleError);
+        // Continue with logout even if Google sign-out fails
+      }
+
+      // 2. Clear all local storage
+      console.log('🧹 Clearing local storage...');
+      await SecureStore.deleteItemAsync("accessToken");
+      await SecureStore.deleteItemAsync("name");
+      await SecureStore.deleteItemAsync("email");
+      await SecureStore.deleteItemAsync("avatar");
+
+      console.log('✅ Logout completed successfully');
+
+      // 3. Navigate to onboarding
+      router.push("/(routes)/onboarding");
+
+    } catch (error) {
+      console.error('❌ Logout error:', error);
+      // Even if there's an error, try to navigate to onboarding
+      router.push("/(routes)/onboarding");
+    }
   };
 
   // --- Array of profile options for clean mapping ---
