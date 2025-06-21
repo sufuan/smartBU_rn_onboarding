@@ -1,13 +1,13 @@
 /**
  * Daily Limit Management Script
- * 
+ *
  * This script allows you to:
  * 1. Check current daily bookings for a user
  * 2. Clear today's bookings for testing
  * 3. Simulate different daily limit scenarios
  */
 
-const { PrismaClient } = require('@prisma/client');
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 

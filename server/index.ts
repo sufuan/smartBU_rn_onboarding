@@ -304,7 +304,13 @@ app.get("/api/user-slots", isAuthenticated as any, asyncHandler(async (req: Auth
 // Get All Machines Endpoint
 app.get("/api/machines", asyncHandler(async (req: Request, res: Response) => {
   try {
+    const { machineId } = req.query;
+
+    // If machineId query param is provided, filter by it
+    const whereCondition = machineId ? { machineId: machineId as string } : {};
+
     const machines = await prisma.machine.findMany({
+      where: whereCondition,
       select: {
         id: true,
         machineId: true,
@@ -325,6 +331,41 @@ app.get("/api/machines", asyncHandler(async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("❌ Error fetching machines:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}));
+
+// Get Single Machine by Database ID Endpoint
+app.get("/api/machines/:id", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const machine = await prisma.machine.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        machineId: true,
+        qrCode: true,
+        status: true,
+        location: true,
+        createdAt: true,
+        updatedAt: true,
+      }
+    });
+
+    if (!machine) {
+      return res.status(404).json({
+        success: false,
+        message: "Machine not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      machine
+    });
+  } catch (error) {
+    console.error("❌ Error fetching machine:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 }));

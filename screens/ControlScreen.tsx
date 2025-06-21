@@ -37,9 +37,12 @@ export default function ControlScreen() {
 
   // Get navigation params with proper typing
   const userId = (params.userId as string) || user?.id;
-  const machineId = params.machineId as string;
+  const machineId = params.machineId as string; // This is the database ID
   const slotTime = params.slotTime ? new Date(params.slotTime as string) : new Date();
   const initialAuthCode = (params.authCode as string) || "";
+
+  // State to store the actual machine data
+  const [machineData, setMachineData] = useState<any>(null);
 
   // State variables
   const [authCode, setAuthCode] = useState(initialAuthCode);
@@ -53,6 +56,28 @@ export default function ControlScreen() {
 
   // Camera permissions
   const [permission, requestPermission] = useCameraPermissions();
+
+  // Fetch machine data to get the actual machineId for QR validation
+  useEffect(() => {
+    const fetchMachineData = async () => {
+      if (!machineId) return;
+
+      try {
+        const response = await axios.get(
+          `${process.env.EXPO_PUBLIC_SERVER_URI}/api/machines/${machineId}`
+        );
+
+        if (response.data.success) {
+          setMachineData(response.data.machine);
+          console.log('🏭 Machine data loaded:', response.data.machine);
+        }
+      } catch (error) {
+        console.error('❌ Error fetching machine data:', error);
+      }
+    };
+
+    fetchMachineData();
+  }, [machineId]);
 
   // Refs
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -295,13 +320,28 @@ export default function ControlScreen() {
     if (data && !qrLock.current) {
       qrLock.current = true;
 
+      console.log('🔍 QR Code scanned:', data);
+      console.log('🏭 Machine data:', machineData);
+
       // Check if QR code matches expected format: "machineId:<machineId>"
       if (data.startsWith("machineId:")) {
-        const scannedId = data.replace("machineId:", "");
+        const scannedMachineId = data.replace("machineId:", "");
 
-        // Validate it matches the slot's machineId
-        if (scannedId !== machineId) {
-          Alert.alert("Error", "Wrong machine scanned", [
+        // Validate it matches the slot's machine machineId (not the database ID)
+        if (!machineData) {
+          Alert.alert("Error", "Machine data not loaded. Please try again.", [
+            {
+              text: "OK",
+              onPress: () => {
+                qrLock.current = false;
+              },
+            },
+          ]);
+          return;
+        }
+
+        if (scannedMachineId !== machineData.machineId) {
+          Alert.alert("Error", `Wrong machine scanned.\nExpected: ${machineData.machineId}\nScanned: ${scannedMachineId}`, [
             {
               text: "OK",
               onPress: () => {
@@ -313,11 +353,11 @@ export default function ControlScreen() {
         }
 
         // Machine matches - close scanner and update state
-        setScannedMachineId(scannedId);
+        setScannedMachineId(scannedMachineId);
         setShowScanner(false);
         qrLock.current = false;
 
-        Alert.alert("Success", `Machine ${scannedId} verified! You can now start the cycle.`);
+        Alert.alert("Success", `Machine ${scannedMachineId} verified! You can now start the cycle.`);
       } else {
         Alert.alert("Error", "Invalid QR code format", [
           {
@@ -435,7 +475,16 @@ export default function ControlScreen() {
 
           <View style={styles.detailRow}>
             <Text style={[styles.detailLabel, { color: theme.dark ? "#ccc" : "#666" }]}>Machine ID:</Text>
-            <Text style={[styles.detailValue, { color: theme.dark ? "#fff" : "#000" }]}>{machineId}</Text>
+            <Text style={[styles.detailValue, { color: theme.dark ? "#fff" : "#000" }]}>
+              {machineData?.machineId || "Loading..."}
+            </Text>
+          </View>
+
+          <View style={styles.detailRow}>
+            <Text style={[styles.detailLabel, { color: theme.dark ? "#ccc" : "#666" }]}>Location:</Text>
+            <Text style={[styles.detailValue, { color: theme.dark ? "#fff" : "#000" }]}>
+              {machineData?.location || "Loading..."}
+            </Text>
           </View>
 
           <View style={styles.detailRow}>
@@ -493,6 +542,12 @@ export default function ControlScreen() {
             </Text>
             <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
               Machine Scanned: {scannedMachineId ? 'YES' : 'NO'}
+            </Text>
+            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+              DB Machine ID: {machineId?.slice(-8)}
+            </Text>
+            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+              QR Machine ID: {machineData?.machineId || 'Loading...'}
             </Text>
           </View>
 

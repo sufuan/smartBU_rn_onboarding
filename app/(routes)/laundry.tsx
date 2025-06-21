@@ -3,22 +3,22 @@ import { useBookSlotMutation } from "@/hooks/mutations/useSlotMutations";
 import { useUserSlotsQuery } from "@/hooks/queries/useMachineQueries";
 import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import {
-    fontSizes
+  fontSizes
 } from "@/themes/app.constant";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import axios from "axios";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Pressable,
-    RefreshControl,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
@@ -246,6 +246,30 @@ export default function LaundryScreen() {
             newSet.delete(slotId);
             return newSet;
           });
+
+          // Show success message and redirect to tabs
+          Alert.alert(
+            "Booking Successful!",
+            "Your slot has been booked successfully. Tap the 'My Bookings' tab (calendar icon) to view and manage your bookings.",
+            [
+              {
+                text: "Go to Tabs",
+                onPress: () => {
+                  // Try to navigate directly to My Bookings tab
+                  try {
+                    router.push("/mybookings");
+                  } catch (error) {
+                    // Fallback to tabs root
+                    router.replace("/(tabs)");
+                  }
+                },
+              },
+              {
+                text: "Stay Here",
+                style: "cancel",
+              },
+            ]
+          );
         },
         onError: (error) => {
           console.error('❌ LaundryScreen: Slot booking failed:', error);
@@ -460,9 +484,26 @@ export default function LaundryScreen() {
                 </Text>
               </View>
 
-              <Text style={[styles.myBookingsTitle, { color: theme.dark ? "#fff" : "#000" }]}>
-                My Bookings
-              </Text>
+              <View style={styles.myBookingsHeader}>
+                <Text style={[styles.myBookingsTitle, { color: theme.dark ? "#fff" : "#000" }]}>
+                  My Bookings
+                </Text>
+                {userSlots.length > 0 && (
+                  <Pressable
+                    style={styles.viewAllButton}
+                    onPress={() => {
+                      try {
+                        router.push("/mybookings");
+                      } catch (error) {
+                        router.replace("/(tabs)");
+                      }
+                    }}
+                  >
+                    <Text style={styles.viewAllText}>Go to My Bookings</Text>
+                    <Ionicons name="chevron-forward" size={16} color="#4A90E2" />
+                  </Pressable>
+                )}
+              </View>
               {userSlotsLoading ? (
                 <View style={styles.myBookingsLoading}>
                   <ActivityIndicator size="small" color="#4A90E2" />
@@ -688,10 +729,27 @@ const styles = StyleSheet.create({
   myBookingsSection: {
     marginBottom: verticalScale(20),
   },
+  myBookingsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: verticalScale(12),
+  },
   myBookingsTitle: {
     fontSize: fontSizes.FONT18,
     fontWeight: 'bold',
-    marginBottom: verticalScale(12),
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(4),
+  },
+  viewAllText: {
+    fontSize: fontSizes.FONT14,
+    color: '#4A90E2',
+    fontWeight: '600',
+    marginRight: scale(4),
   },
   myBookingsLoading: {
     flexDirection: 'row',

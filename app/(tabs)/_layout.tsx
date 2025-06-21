@@ -4,20 +4,20 @@ import { fontSizes, IsAndroid, IsIOS } from "@/themes/app.constant";
 import { Feather, Ionicons, Octicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import React from "react";
-import { Dimensions, StatusBar, StyleSheet, View } from "react-native";
+import { StatusBar, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { moderateScale, scale, verticalScale } from "react-native-size-matters";
 
 const STATUSBAR_HEIGHT = StatusBar.currentHeight || 0;
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-const NAVIGATION_BAR_HEIGHT = IsAndroid ? 48 : 0; // Typical Android navigation bar height
 
 export default function _layout() {
   const { theme } = useTheme();
   const { isLoading: loader } = useSubscriptionStatus();
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={{ 
-      flex: 1, 
+    <View style={{
+      flex: 1,
       backgroundColor: theme.dark ? '#131313' : '#f5f5f5',
       paddingTop: IsAndroid ? STATUSBAR_HEIGHT : 0,
     }}>
@@ -39,10 +39,10 @@ export default function _layout() {
                       color={color}
                     />
                   );
-                case "services/index":
+                case "mybookings/index":
                   return (
                     <Feather
-                      name="book-open"
+                      name="calendar"
                       size={moderateScale(22)}
                       color={color}
                     />
@@ -67,7 +67,7 @@ export default function _layout() {
             };
 
             return (
-              <View style={{ 
+              <View style={{
                 alignItems: 'center',
                 justifyContent: 'center',
                 width: moderateScale(50),
@@ -88,11 +88,11 @@ export default function _layout() {
             );
           },
           tabBarActiveTintColor: "#4A90E2",
-          tabBarInactiveTintColor: "#8e8e93",
-          headerShown: route.name === "services/index" || route.name === "resources/index",
+          tabBarInactiveTintColor: theme.dark ? "#666" : "#8e8e93",
+          headerShown: route.name === "mybookings/index" || route.name === "resources/index",
           headerTitle:
-            route.name === "services/index"
-              ? "Services"
+            route.name === "mybookings/index"
+              ? "My Bookings"
               : route.name === "resources/index"
               ? "Video Lessons"
               : "",
@@ -112,33 +112,33 @@ export default function _layout() {
             position: 'absolute',
             height: IsAndroid ? verticalScale(48) : verticalScale(50),
             borderTopWidth: 0,
-            backgroundColor: '#fff',
+            backgroundColor: theme.dark ? '#2a2a2a' : '#fff',
             opacity: loader ? 0 : 1,
-            shadowColor: '#000',
+            shadowColor: theme.dark ? '#fff' : '#000',
             shadowOffset: {
               width: 0,
               height: -2,
             },
-            shadowOpacity: 0.1,
+            shadowOpacity: theme.dark ? 0.2 : 0.1,
             shadowRadius: 3,
             elevation: 10,
             ...(IsAndroid
               ? {
                   left: 0,
                   right: 0,
-                  bottom:0,
-                
+                  bottom: insets.bottom > 0 ? insets.bottom : 0, // Use safe area for Android navigation bar
                 }
               : {
                   borderTopLeftRadius: scale(20),
                   borderTopRightRadius: scale(20),
+                  bottom: insets.bottom,
                 }),
           },
           tabBarBackground: () => (
             <View
               style={{
                 ...StyleSheet.absoluteFillObject,
-                backgroundColor: '#fff',
+                backgroundColor: theme.dark ? '#2a2a2a' : '#fff',
                 ...(IsIOS && {
                   borderTopLeftRadius: scale(20),
                   borderTopRightRadius: scale(20),
@@ -149,7 +149,7 @@ export default function _layout() {
         })}
       >
         <Tabs.Screen name="index" />
-        <Tabs.Screen name="services/index" />
+        <Tabs.Screen name="mybookings/index" />
         <Tabs.Screen name="resources/index" />
         <Tabs.Screen name="profile/index" />
       </Tabs>
