@@ -75,12 +75,7 @@ export default function ControlScreen() {
     return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
-  const isSlotActive = () => {
-    const now = new Date();
-    const slotStart = new Date(slotTime);
-    const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
-    return now >= slotStart && now <= slotEnd;
-  };
+  // Removed duplicate isSlotActive() - using isSlotTimeValid() instead
 
   // Check if current time is before slot time for countdown
   const getTimeUntilSlot = () => {
@@ -100,17 +95,35 @@ export default function ControlScreen() {
     return secondsUntil;
   };
 
-  // Check if slot time is within valid range (current time to current time + 30 min)
-  const isSlotTimeValid = () => {
+  // Get slot state: 'waiting', 'active', or 'expired'
+  const getSlotState = () => {
     const now = new Date();
     const slotStart = new Date(slotTime);
     const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
-    const isValid = now >= slotStart && now <= slotEnd;
+
+    if (now < slotStart) {
+      return 'waiting'; // Before slot start time
+    } else if (now >= slotStart && now <= slotEnd) {
+      return 'active'; // Within 30-minute active window
+    } else {
+      return 'expired'; // After 30-minute window
+    }
+  };
+
+  // Check if slot is currently active (within 30-minute window)
+  const isSlotTimeValid = () => {
+    const state = getSlotState();
+    const isValid = state === 'active';
+
+    const now = new Date();
+    const slotStart = new Date(slotTime);
+    const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
 
     console.log('🔍 Slot Validity Debug:', {
       now: now.toISOString(),
       slotStart: slotStart.toISOString(),
       slotEnd: slotEnd.toISOString(),
+      slotState: state,
       isValid,
       nowTime: now.getTime(),
       slotStartTime: slotStart.getTime(),
@@ -120,7 +133,9 @@ export default function ControlScreen() {
     return isValid;
   };
 
-  // Initialize countdown to slot time
+  // Removed unused helper functions - using getSlotState() directly
+
+  // Initialize countdown to slot time and set up real-time updates
   useEffect(() => {
     console.log('🚀 Initializing ControlScreen with params:', {
       userId,
@@ -129,42 +144,44 @@ export default function ControlScreen() {
       authCode: initialAuthCode
     });
 
-    const timeUntilSlot = getTimeUntilSlot();
-    console.log('⏰ Initial time until slot:', timeUntilSlot);
+    // Function to update countdown and slot state based on current time
+    const updateCountdown = () => {
+      const timeUntilSlot = getTimeUntilSlot();
+      const currentSlotState = getSlotState();
 
-    if (timeUntilSlot > 0) {
-      console.log('✅ Setting countdown to:', timeUntilSlot);
-      setCountdownToSlot(timeUntilSlot);
-    } else {
-      console.log('ℹ️ Slot time is now or past, no countdown needed');
-      setCountdownToSlot(null);
-    }
+      console.log('⏰ Updating countdown and state:', {
+        timeUntilSlot,
+        currentSlotState,
+        slotTime: slotTime.toISOString(),
+        currentTime: new Date().toISOString()
+      });
+
+      // Always update countdown based on current state
+      if (currentSlotState === 'waiting') {
+        setCountdownToSlot(timeUntilSlot);
+      } else {
+        // Clear countdown when slot becomes active or expired
+        setCountdownToSlot(null);
+      }
+    };
+
+    // Initial countdown calculation
+    updateCountdown();
+
+    // Set up real-time updates every second
+    const realTimeInterval = setInterval(updateCountdown, 1000);
+    console.log('⏰ Real-time countdown updates started');
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
+      if (realTimeInterval) clearInterval(realTimeInterval);
+      console.log('⏰ All intervals cleared');
     };
   }, [slotTime]);
 
-  // Countdown to slot time effect
-  useEffect(() => {
-    if (countdownToSlot !== null && countdownToSlot > 0) {
-      countdownRef.current = setInterval(() => {
-        setCountdownToSlot(prev => {
-          if (prev === null || prev <= 1) {
-            return null;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else if (countdownToSlot === 0) {
-      if (countdownRef.current) clearInterval(countdownRef.current);
-    }
-
-    return () => {
-      if (countdownRef.current) clearInterval(countdownRef.current);
-    };
-  }, [countdownToSlot]);
+  // Note: Countdown is now handled by real-time updates in the main useEffect
+  // This effect is kept for the cycle timer only
 
   useEffect(() => {
     if (timeRemaining !== null && timeRemaining > 0) {
@@ -193,7 +210,7 @@ export default function ControlScreen() {
       return;
     }
 
-    if (!isSlotActive()) {
+    if (!isSlotTimeValid()) {
       Alert.alert("Error", "Slot time not active");
       return;
     }
@@ -301,7 +318,16 @@ export default function ControlScreen() {
     }
   };
 
-  const handleGoBack = () => router.back();
+  const handleGoBack = () => {
+    console.log('🔙 Back button pressed');
+    try {
+      router.back();
+    } catch (error) {
+      console.error('❌ Error navigating back:', error);
+      // Fallback navigation
+      router.push("/(routes)/laundry");
+    }
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.dark ? "#131313" : "#fff" }]}>
@@ -330,35 +356,55 @@ export default function ControlScreen() {
             <Text style={[styles.detailValue, { color: theme.dark ? "#fff" : "#000" }]}>{machineId}</Text>
           </View>
 
-          {/* Countdown or Ready Status */}
-          {countdownToSlot !== null && countdownToSlot > 0 ? (
-            <View style={styles.countdownContainer}>
-              <Text style={[styles.countdownLabel, { color: theme.dark ? "#ccc" : "#666" }]}>
-                Slot starts in
-              </Text>
-              <Text style={[styles.countdownText, { color: theme.dark ? "#FF9800" : "#F57C00" }]}>
-                {formatTimer(countdownToSlot)}
-              </Text>
-              <Text style={[styles.countdownSubtext, { color: theme.dark ? "#999" : "#888" }]}>
-                Scanner will be available when slot starts
-              </Text>
-            </View>
-          ) : isSlotTimeValid() ? (
-            <View style={styles.readyContainer}>
-              <Text style={[styles.readyText, { color: theme.dark ? "#4CAF50" : "#2E7D32" }]}>
-                ✅ Slot is active! Scan QR code to start washing
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.expiredContainer}>
-              <Text style={[styles.expiredText, { color: theme.dark ? "#F44336" : "#D32F2F" }]}>
-                ⏰ Slot time has expired
-              </Text>
-              <Text style={[styles.expiredSubtext, { color: theme.dark ? "#999" : "#888" }]}>
-                Please book a new slot
-              </Text>
-            </View>
-          )}
+          {/* Countdown, Active, or Expired Status */}
+          {(() => {
+            const slotState = getSlotState();
+
+            if (slotState === 'waiting') {
+              // Show countdown when waiting for slot to start
+              return (
+                <View style={styles.countdownContainer}>
+                  <Text style={[styles.countdownLabel, { color: theme.dark ? "#ccc" : "#666" }]}>
+                    Slot starts in
+                  </Text>
+                  <Text style={[styles.countdownText, { color: theme.dark ? "#FF9800" : "#F57C00" }]}>
+                    {formatTimer(countdownToSlot || 0)}
+                  </Text>
+                  <Text style={[styles.countdownSubtext, { color: theme.dark ? "#999" : "#888" }]}>
+                    Scanner will be available when slot starts
+                  </Text>
+                </View>
+              );
+            } else if (slotState === 'active') {
+              // Show active status when slot is within 30-minute window
+              const now = new Date();
+              const slotEnd = new Date(new Date(slotTime).getTime() + 30 * 60 * 1000);
+              const timeRemaining = Math.max(0, Math.floor((slotEnd.getTime() - now.getTime()) / 1000));
+
+              return (
+                <View style={styles.readyContainer}>
+                  <Text style={[styles.readyText, { color: theme.dark ? "#4CAF50" : "#2E7D32" }]}>
+                    ✅ Slot is active! Scan QR code to start washing
+                  </Text>
+                  <Text style={[styles.activeTimeText, { color: theme.dark ? "#4CAF50" : "#2E7D32" }]}>
+                    Active for {formatTimer(timeRemaining)} more
+                  </Text>
+                </View>
+              );
+            } else {
+              // Show expired status when slot window has passed
+              return (
+                <View style={styles.expiredContainer}>
+                  <Text style={[styles.expiredText, { color: theme.dark ? "#F44336" : "#D32F2F" }]}>
+                    ⏰ Slot time has expired
+                  </Text>
+                  <Text style={[styles.expiredSubtext, { color: theme.dark ? "#999" : "#888" }]}>
+                    Please book a new slot
+                  </Text>
+                </View>
+              );
+            }
+          })()}
         </View>
 
         {/* Cycle Timer */}
@@ -414,12 +460,21 @@ export default function ControlScreen() {
         <View style={styles.buttonContainer}>
           {/* Debug Info */}
           <View style={[styles.debugContainer, { backgroundColor: theme.dark ? "#2a2a2a" : "#f0f0f0" }]}>
-            <Text style={[styles.debugTitle, { color: theme.dark ? "#fff" : "#000" }]}>🔧 Debug Info</Text>
+            <Text style={[styles.debugTitle, { color: theme.dark ? "#fff" : "#000" }]}>🔧 Real-Time Debug Info</Text>
             <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-              Countdown: {countdownToSlot !== null ? `${countdownToSlot}s` : 'null'}
+              Current Time: {new Date().toLocaleTimeString()}
             </Text>
             <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-              Slot Valid: {isSlotTimeValid() ? 'YES' : 'NO'}
+              Slot Time: {slotTime.toLocaleTimeString()}
+            </Text>
+            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+              Slot State: {getSlotState().toUpperCase()}
+            </Text>
+            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+              Countdown: {countdownToSlot !== null ? `${countdownToSlot}s (${formatTimer(countdownToSlot)})` : 'null'}
+            </Text>
+            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+              Slot Valid (Active): {isSlotTimeValid() ? 'YES' : 'NO'}
             </Text>
             <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
               Scanner Available: {isSlotTimeValid() ? 'YES' : 'NO'}
@@ -604,6 +659,13 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.FONT16,
     fontWeight: "600",
     textAlign: "center",
+  },
+
+  activeTimeText: {
+    fontSize: fontSizes.FONT12,
+    fontWeight: "500",
+    textAlign: "center",
+    marginTop: verticalScale(4),
   },
 
   // Expired status
