@@ -87,7 +87,17 @@ export default function ControlScreen() {
     const now = new Date();
     const slotStart = new Date(slotTime);
     const diffMs = slotStart.getTime() - now.getTime();
-    return Math.max(0, Math.floor(diffMs / 1000));
+    const secondsUntil = Math.max(0, Math.floor(diffMs / 1000));
+
+    console.log('🕐 Countdown Debug:', {
+      now: now.toISOString(),
+      slotStart: slotStart.toISOString(),
+      diffMs,
+      secondsUntil,
+      slotTime: slotTime.toISOString()
+    });
+
+    return secondsUntil;
   };
 
   // Check if slot time is within valid range (current time to current time + 30 min)
@@ -95,21 +105,46 @@ export default function ControlScreen() {
     const now = new Date();
     const slotStart = new Date(slotTime);
     const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
-    return now >= slotStart && now <= slotEnd;
+    const isValid = now >= slotStart && now <= slotEnd;
+
+    console.log('🔍 Slot Validity Debug:', {
+      now: now.toISOString(),
+      slotStart: slotStart.toISOString(),
+      slotEnd: slotEnd.toISOString(),
+      isValid,
+      nowTime: now.getTime(),
+      slotStartTime: slotStart.getTime(),
+      slotEndTime: slotEnd.getTime()
+    });
+
+    return isValid;
   };
 
   // Initialize countdown to slot time
   useEffect(() => {
+    console.log('🚀 Initializing ControlScreen with params:', {
+      userId,
+      machineId,
+      slotTime: slotTime.toISOString(),
+      authCode: initialAuthCode
+    });
+
     const timeUntilSlot = getTimeUntilSlot();
+    console.log('⏰ Initial time until slot:', timeUntilSlot);
+
     if (timeUntilSlot > 0) {
+      console.log('✅ Setting countdown to:', timeUntilSlot);
       setCountdownToSlot(timeUntilSlot);
+    } else {
+      console.log('ℹ️ Slot time is now or past, no countdown needed');
+      setCountdownToSlot(null);
     }
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
-  }, []);
+  }, [slotTime]);
 
   // Countdown to slot time effect
   useEffect(() => {
@@ -299,16 +334,28 @@ export default function ControlScreen() {
           {countdownToSlot !== null && countdownToSlot > 0 ? (
             <View style={styles.countdownContainer}>
               <Text style={[styles.countdownLabel, { color: theme.dark ? "#ccc" : "#666" }]}>
-                You can start booking in
+                Slot starts in
               </Text>
-              <Text style={[styles.countdownText, { color: theme.dark ? "#4CAF50" : "#2E7D32" }]}>
+              <Text style={[styles.countdownText, { color: theme.dark ? "#FF9800" : "#F57C00" }]}>
                 {formatTimer(countdownToSlot)}
+              </Text>
+              <Text style={[styles.countdownSubtext, { color: theme.dark ? "#999" : "#888" }]}>
+                Scanner will be available when slot starts
+              </Text>
+            </View>
+          ) : isSlotTimeValid() ? (
+            <View style={styles.readyContainer}>
+              <Text style={[styles.readyText, { color: theme.dark ? "#4CAF50" : "#2E7D32" }]}>
+                ✅ Slot is active! Scan QR code to start washing
               </Text>
             </View>
           ) : (
-            <View style={styles.readyContainer}>
-              <Text style={[styles.readyText, { color: theme.dark ? "#4CAF50" : "#2E7D32" }]}>
-                You can wash now, scan QR to wash
+            <View style={styles.expiredContainer}>
+              <Text style={[styles.expiredText, { color: theme.dark ? "#F44336" : "#D32F2F" }]}>
+                ⏰ Slot time has expired
+              </Text>
+              <Text style={[styles.expiredSubtext, { color: theme.dark ? "#999" : "#888" }]}>
+                Please book a new slot
               </Text>
             </View>
           )}
@@ -365,6 +412,23 @@ export default function ControlScreen() {
 
         {/* Action Buttons */}
         <View style={styles.buttonContainer}>
+          {/* Debug Info */}
+          <View style={[styles.debugContainer, { backgroundColor: theme.dark ? "#2a2a2a" : "#f0f0f0" }]}>
+            <Text style={[styles.debugTitle, { color: theme.dark ? "#fff" : "#000" }]}>🔧 Debug Info</Text>
+            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+              Countdown: {countdownToSlot !== null ? `${countdownToSlot}s` : 'null'}
+            </Text>
+            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+              Slot Valid: {isSlotTimeValid() ? 'YES' : 'NO'}
+            </Text>
+            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+              Scanner Available: {isSlotTimeValid() ? 'YES' : 'NO'}
+            </Text>
+            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+              Machine Scanned: {scannedMachineId ? 'YES' : 'NO'}
+            </Text>
+          </View>
+
           <Pressable
             style={[
               styles.button,
@@ -375,17 +439,19 @@ export default function ControlScreen() {
             disabled={!isSlotTimeValid()}
           >
             <Ionicons name="qr-code" size={20} color="#fff" />
-            <Text style={styles.buttonText}>Scan QR Code</Text>
+            <Text style={styles.buttonText}>
+              {!isSlotTimeValid() ? 'Scanner Not Available' : 'Scan QR Code'}
+            </Text>
           </Pressable>
 
           <Pressable
             style={[
               styles.button,
               styles.startButton,
-              { opacity: isLoading || !authCode || !scannedMachineId ? 0.5 : 1 }
+              { opacity: isLoading || !authCode || !scannedMachineId || !isSlotTimeValid() ? 0.5 : 1 }
             ]}
             onPress={handleStartCycle}
-            disabled={isLoading || !authCode || !scannedMachineId}
+            disabled={isLoading || !authCode || !scannedMachineId || !isSlotTimeValid()}
           >
             {isLoading ? (
               <Text style={styles.buttonText}>Starting...</Text>
@@ -519,6 +585,12 @@ const styles = StyleSheet.create({
     fontFamily: "monospace",
   },
 
+  countdownSubtext: {
+    fontSize: fontSizes.FONT12,
+    marginTop: verticalScale(8),
+    textAlign: "center",
+  },
+
   // Ready status
   readyContainer: {
     alignItems: "center",
@@ -534,6 +606,27 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
+  // Expired status
+  expiredContainer: {
+    alignItems: "center",
+    marginTop: verticalScale(16),
+    padding: scale(16),
+    backgroundColor: "rgba(244, 67, 54, 0.1)",
+    borderRadius: scale(8),
+  },
+
+  expiredText: {
+    fontSize: fontSizes.FONT16,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+
+  expiredSubtext: {
+    fontSize: fontSizes.FONT12,
+    marginTop: verticalScale(4),
+    textAlign: "center",
+  },
+
   // Auth code input
   authCodeInput: {
     borderWidth: 1,
@@ -545,6 +638,26 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     textAlign: "center",
     textTransform: "uppercase",
+  },
+
+  // Debug styles
+  debugContainer: {
+    borderRadius: scale(8),
+    padding: scale(12),
+    marginBottom: verticalScale(16),
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+
+  debugTitle: {
+    fontSize: fontSizes.FONT14,
+    fontWeight: "bold",
+    marginBottom: verticalScale(8),
+  },
+
+  debugText: {
+    fontSize: fontSizes.FONT12,
+    marginBottom: verticalScale(4),
   },
 
   // Buttons

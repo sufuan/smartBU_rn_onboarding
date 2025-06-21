@@ -3,22 +3,22 @@ import { useBookSlotMutation } from "@/hooks/mutations/useSlotMutations";
 import { useUserSlotsQuery } from "@/hooks/queries/useMachineQueries";
 import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import {
-  fontSizes
+    fontSizes
 } from "@/themes/app.constant";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import axios from "axios";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Pressable,
+    RefreshControl,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
@@ -168,6 +168,14 @@ export default function LaundryScreen() {
   // Handle slot booking (using TanStack Query mutation with individual slot tracking)
   const handleBookSlot = useCallback(async (machineId: string, slotTime: Date, machineLocation?: string) => {
     console.log('🎯 LaundryScreen: Slot booking initiated for machine:', machineId);
+    console.log('🎯 LaundryScreen: Slot time:', slotTime.toISOString());
+    console.log('🎯 LaundryScreen: User data:', { id: user?.id, email: user?.email });
+    console.log('🎯 LaundryScreen: Subscription status:', hasSubscription);
+    console.log('🎯 LaundryScreen: Mutation status:', {
+      isPending: bookSlotMutation.isPending,
+      isError: bookSlotMutation.isError,
+      error: bookSlotMutation.error
+    });
 
     // Create unique slot identifier
     const slotId = `${machineId}-${slotTime.getTime()}`;
@@ -180,6 +188,7 @@ export default function LaundryScreen() {
 
     // Check if user exists
     if (!user) {
+      console.error('❌ LaundryScreen: User not found');
       Alert.alert('Error', 'User not found. Please try again.');
       return;
     }
@@ -188,10 +197,11 @@ export default function LaundryScreen() {
     console.log('🔍 LaundryScreen: Checking subscription for slot booking:', {
       userId: user.id,
       email: user.email,
-      hasSubscription: hasActiveSubscription()
+      hasSubscription: hasSubscription,
+      userLoading: userLoading
     });
 
-    if (!hasActiveSubscription()) {
+    if (!hasSubscription) {
       console.log('❌ LaundryScreen: No subscription for slot booking');
       Alert.alert(
         "Subscription Required",
@@ -216,31 +226,46 @@ export default function LaundryScreen() {
     setBookingSlots(prev => new Set(prev).add(slotId));
 
     // Use TanStack Query mutation for slot booking
-    bookSlotMutation.mutate({
-      userId: user.id,
-      machineId,
-      slotTime: slotTime.toISOString(),
-    }, {
-      onSuccess: () => {
-        console.log('✅ LaundryScreen: Slot booking successful');
-        // Remove slot from booking state
-        setBookingSlots(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(slotId);
-          return newSet;
-        });
-      },
-      onError: (error) => {
-        console.error('❌ LaundryScreen: Slot booking failed:', error);
-        // Remove slot from booking state
-        setBookingSlots(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(slotId);
-          return newSet;
-        });
-      }
-    });
-  }, [user, hasSubscription, bookSlotMutation, bookingSlots, setBookingSlots]);
+    try {
+      console.log('🚀 LaundryScreen: Calling mutation with data:', {
+        userId: user.id,
+        machineId,
+        slotTime: slotTime.toISOString(),
+      });
+
+      bookSlotMutation.mutate({
+        userId: user.id,
+        machineId,
+        slotTime: slotTime.toISOString(),
+      }, {
+        onSuccess: (data) => {
+          console.log('✅ LaundryScreen: Slot booking successful:', data);
+          // Remove slot from booking state
+          setBookingSlots(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(slotId);
+            return newSet;
+          });
+        },
+        onError: (error) => {
+          console.error('❌ LaundryScreen: Slot booking failed:', error);
+          // Remove slot from booking state
+          setBookingSlots(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(slotId);
+            return newSet;
+          });
+        }
+      });
+    } catch (error) {
+      console.error('❌ LaundryScreen: Error calling mutation:', error);
+      setBookingSlots(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(slotId);
+        return newSet;
+      });
+    }
+  }, [user, hasSubscription, userLoading, bookSlotMutation, bookingSlots]);
 
   // Format time for display
   const formatTime = (date: Date) => {
@@ -412,6 +437,29 @@ export default function LaundryScreen() {
           }
           ListHeaderComponent={() => (
             <View style={styles.myBookingsSection}>
+              {/* Debug Information */}
+              <View style={[styles.debugContainer, { backgroundColor: theme.dark ? "#2a2a2a" : "#f0f0f0" }]}>
+                <Text style={[styles.debugTitle, { color: theme.dark ? "#fff" : "#000" }]}>🔧 Debug Info</Text>
+                <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+                  User ID: {user?.id || 'Not found'}
+                </Text>
+                <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+                  Has Subscription: {hasSubscription ? 'YES' : 'NO'}
+                </Text>
+                <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+                  User Loading: {userLoading ? 'YES' : 'NO'}
+                </Text>
+                <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+                  User Slots Loading: {userSlotsLoading ? 'YES' : 'NO'}
+                </Text>
+                <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+                  User Slots Count: {userSlots.length}
+                </Text>
+                <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+                  Mutation Pending: {bookSlotMutation.isPending ? 'YES' : 'NO'}
+                </Text>
+              </View>
+
               <Text style={[styles.myBookingsTitle, { color: theme.dark ? "#fff" : "#000" }]}>
                 My Bookings
               </Text>
@@ -426,7 +474,21 @@ export default function LaundryScreen() {
                 <FlatList
                   data={userSlots}
                   renderItem={({ item: slot }) => (
-                    <View style={[styles.myBookingCard, { backgroundColor: theme.dark ? "#2a2a2a" : "#f8f9fa" }]}>
+                    <Pressable
+                      style={[styles.myBookingCard, { backgroundColor: theme.dark ? "#2a2a2a" : "#f8f9fa" }]}
+                      onPress={() => {
+                        console.log('🎯 Navigating to ControlScreen with slot:', slot);
+                        router.push({
+                          pathname: "/(routes)/control" as any,
+                          params: {
+                            userId: user?.id || '',
+                            authCode: slot.authCode || '',
+                            machineId: slot.machine?.machineId || slot.machineId || '',
+                            slotTime: slot.slotTime.toString(),
+                          },
+                        });
+                      }}
+                    >
                       <View style={styles.myBookingInfo}>
                         <Text style={[styles.myBookingMachine, { color: theme.dark ? "#fff" : "#000" }]}>
                           {slot.machine?.machineId || slot.machineId}
@@ -441,7 +503,10 @@ export default function LaundryScreen() {
                       <View style={[styles.myBookingStatus, { backgroundColor: "#28a745" }]}>
                         <Text style={styles.myBookingStatusText}>Booked</Text>
                       </View>
-                    </View>
+                      <View style={styles.tapIndicator}>
+                        <Ionicons name="chevron-forward" size={16} color={theme.dark ? "#ccc" : "#666"} />
+                      </View>
+                    </Pressable>
                   )}
                   keyExtractor={(slot) => slot.id}
                   horizontal
@@ -670,10 +735,32 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.FONT10,
     fontWeight: '600',
   },
+  tapIndicator: {
+    position: 'absolute',
+    top: scale(8),
+    right: scale(8),
+  },
   noBookingsText: {
     fontSize: fontSizes.FONT14,
     fontStyle: 'italic',
     textAlign: 'center',
     paddingVertical: verticalScale(20),
+  },
+  // Debug styles
+  debugContainer: {
+    borderRadius: scale(8),
+    padding: scale(12),
+    marginBottom: verticalScale(16),
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  debugTitle: {
+    fontSize: fontSizes.FONT14,
+    fontWeight: "bold",
+    marginBottom: verticalScale(8),
+  },
+  debugText: {
+    fontSize: fontSizes.FONT12,
+    marginBottom: verticalScale(4),
   },
 });
