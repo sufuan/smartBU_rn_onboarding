@@ -258,13 +258,15 @@ app.get("/api/user-slots", isAuthenticated as any, asyncHandler(async (req: Auth
 
     console.log(`🎯 Fetching user slots for user: ${userId}`);
 
-    // Get user's active slots (upcoming and current)
+    // Get user's active slots (upcoming and current within 30-minute window)
+    const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+
     const userSlots = await prisma.slot.findMany({
       where: {
         userId,
         status: 'Reserved', // Only show reserved slots
         slotTime: {
-          gte: now, // Only future slots (not expired)
+          gte: thirtyMinutesAgo, // Include slots from 30 minutes ago (active window)
         },
       },
       include: {
@@ -503,9 +505,6 @@ app.post("/api/book-slot", isAuthenticated as any, asyncHandler(async (req: Auth
             lte: endOfDay,
           },
           status: 'Reserved',
-          slotTime: {
-            gte: now, // Only count future slots, not expired ones
-          },
         },
         select: { id: true, slotTime: true, machine: { select: { machineId: true } } }
       });

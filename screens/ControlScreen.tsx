@@ -49,6 +49,7 @@ export default function ControlScreen() {
   const [showScanner, setShowScanner] = useState(false);
   const [scannedMachineId, setScannedMachineId] = useState<string | null>(null);
   const [countdownToSlot, setCountdownToSlot] = useState<number | null>(null);
+  const [activeTimeRemaining, setActiveTimeRemaining] = useState<number | null>(null);
 
   // Camera permissions
   const [permission, requestPermission] = useCameraPermissions();
@@ -149,19 +150,31 @@ export default function ControlScreen() {
       const timeUntilSlot = getTimeUntilSlot();
       const currentSlotState = getSlotState();
 
+      // Calculate active time remaining
+      const now = new Date();
+      const slotStart = new Date(slotTime);
+      const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
+      const activeTimeLeft = Math.max(0, Math.floor((slotEnd.getTime() - now.getTime()) / 1000));
+
       console.log('⏰ Updating countdown and state:', {
         timeUntilSlot,
         currentSlotState,
+        activeTimeLeft,
         slotTime: slotTime.toISOString(),
         currentTime: new Date().toISOString()
       });
 
-      // Always update countdown based on current state
+      // Update state based on current slot state
       if (currentSlotState === 'waiting') {
         setCountdownToSlot(timeUntilSlot);
-      } else {
-        // Clear countdown when slot becomes active or expired
+        setActiveTimeRemaining(null);
+      } else if (currentSlotState === 'active') {
         setCountdownToSlot(null);
+        setActiveTimeRemaining(activeTimeLeft);
+      } else {
+        // Expired state
+        setCountdownToSlot(null);
+        setActiveTimeRemaining(null);
       }
     };
 
@@ -377,17 +390,13 @@ export default function ControlScreen() {
               );
             } else if (slotState === 'active') {
               // Show active status when slot is within 30-minute window
-              const now = new Date();
-              const slotEnd = new Date(new Date(slotTime).getTime() + 30 * 60 * 1000);
-              const timeRemaining = Math.max(0, Math.floor((slotEnd.getTime() - now.getTime()) / 1000));
-
               return (
                 <View style={styles.readyContainer}>
                   <Text style={[styles.readyText, { color: theme.dark ? "#4CAF50" : "#2E7D32" }]}>
                     ✅ Slot is active! Scan QR code to start washing
                   </Text>
                   <Text style={[styles.activeTimeText, { color: theme.dark ? "#4CAF50" : "#2E7D32" }]}>
-                    Active for {formatTimer(timeRemaining)} more
+                    Active for {formatTimer(activeTimeRemaining || 0)} more
                   </Text>
                 </View>
               );
@@ -472,6 +481,9 @@ export default function ControlScreen() {
             </Text>
             <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
               Countdown: {countdownToSlot !== null ? `${countdownToSlot}s (${formatTimer(countdownToSlot)})` : 'null'}
+            </Text>
+            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+              Active Time: {activeTimeRemaining !== null ? `${activeTimeRemaining}s (${formatTimer(activeTimeRemaining)})` : 'null'}
             </Text>
             <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
               Slot Valid (Active): {isSlotTimeValid() ? 'YES' : 'NO'}
