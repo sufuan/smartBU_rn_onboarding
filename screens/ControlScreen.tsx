@@ -22,13 +22,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
 
-// Navigation params interface
-interface ControlScreenParams {
-  userId: string;
-  slotTime: string;
-  machineId: string;
-  authCode: string;
-}
+// Navigation params interface removed - using direct param access
 
 export default function ControlScreen() {
   const { theme } = useTheme();
@@ -110,13 +104,7 @@ export default function ControlScreen() {
     const diffMs = slotStart.getTime() - now.getTime();
     const secondsUntil = Math.max(0, Math.floor(diffMs / 1000));
 
-    console.log('🕐 Countdown Debug:', {
-      now: now.toISOString(),
-      slotStart: slotStart.toISOString(),
-      diffMs,
-      secondsUntil,
-      slotTime: slotTime.toISOString()
-    });
+    // Countdown logging removed for cleaner console
 
     return secondsUntil;
   };
@@ -141,20 +129,8 @@ export default function ControlScreen() {
     const state = getSlotState();
     const isValid = state === 'active';
 
-    const now = new Date();
-    const slotStart = new Date(slotTime);
-    const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
-
-    console.log('🔍 Slot Validity Debug:', {
-      now: now.toISOString(),
-      slotStart: slotStart.toISOString(),
-      slotEnd: slotEnd.toISOString(),
-      slotState: state,
-      isValid,
-      nowTime: now.getTime(),
-      slotStartTime: slotStart.getTime(),
-      slotEndTime: slotEnd.getTime()
-    });
+    // Only log slot validity changes, not every check
+    // console.log('🔍 Slot Validity:', { slotState: state, isValid });
 
     return isValid;
   };
@@ -181,13 +157,7 @@ export default function ControlScreen() {
       const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
       const activeTimeLeft = Math.max(0, Math.floor((slotEnd.getTime() - now.getTime()) / 1000));
 
-      console.log('⏰ Updating countdown and state:', {
-        timeUntilSlot,
-        currentSlotState,
-        activeTimeLeft,
-        slotTime: slotTime.toISOString(),
-        currentTime: new Date().toISOString()
-      });
+      // State change logging removed for cleaner console
 
       // Update state based on current slot state
       if (currentSlotState === 'waiting') {
@@ -208,13 +178,13 @@ export default function ControlScreen() {
 
     // Set up real-time updates every second
     const realTimeInterval = setInterval(updateCountdown, 1000);
-    console.log('⏰ Real-time countdown updates started');
+    // console.log('⏰ Real-time countdown updates started');
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
       if (realTimeInterval) clearInterval(realTimeInterval);
-      console.log('⏰ All intervals cleared');
+      // console.log('⏰ All intervals cleared');
     };
   }, [slotTime]);
 

@@ -1,8 +1,10 @@
 import { useTheme } from "@/context/theme.context";
 import { useUserSlotsQuery } from "@/hooks/queries/useMachineQueries";
 import { useSubscriptionStatus, useUserQuery } from "@/hooks/queries/useUserQuery";
+import { apiService } from "@/lib/api";
 import { fontSizes } from "@/themes/app.constant";
 import { Feather, Ionicons } from "@expo/vector-icons";
+import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -34,22 +36,46 @@ export default function MyBookingsScreen() {
   const { theme } = useTheme();
   const { user } = useUserQuery();
   const { hasSubscription, isLoading: subscriptionLoading } = useSubscriptionStatus();
+
+  // Fetch active slots
   const {
-    userSlots = [],
-    isLoading,
-    refetch,
-    error
+    userSlots: activeSlots = [],
+    isLoading: isLoadingActive,
+    refetch: refetchActive,
+    error: activeError
   } = useUserSlotsQuery(user?.id || "");
 
-  // Debug logging
+  // Fetch slot history
+  const {
+    data: historySlots = [],
+    isLoading: isLoadingHistory,
+    refetch: refetchHistory,
+    error: historyError
+  } = useQuery({
+    queryKey: ['user-slot-history', user?.id],
+    queryFn: () => apiService.getUserSlotHistory(user?.id || ''),
+    enabled: !!user?.id,
+    staleTime: 30 * 1000, // 30 seconds
+    refetchOnWindowFocus: true,
+  });
+
+  // Combine all slots for processing
+  const allSlots = [...activeSlots, ...historySlots];
+  const isLoading = isLoadingActive || isLoadingHistory;
+  const error = activeError || historyError;
+
+  // Reduced debug logging - only log when data changes significantly
   useEffect(() => {
-    console.log('🔍 MyBookings Debug Info:');
-    console.log('   User ID:', user?.id);
-    console.log('   User Slots Count:', userSlots.length);
-    console.log('   User Slots Data:', userSlots);
-    console.log('   Is Loading:', isLoading);
-    console.log('   Error:', error);
-  }, [user?.id, userSlots, isLoading, error]);
+    if (user?.id && !isLoading) {
+      console.log('🔍 MyBookings Summary:', {
+        userId: user.id.slice(-8),
+        totalSlots: allSlots.length,
+        activeSlots: activeSlots.length,
+        historySlots: historySlots.length,
+        hasError: !!error
+      });
+    }
+  }, [user?.id, allSlots.length, activeSlots.length, historySlots.length, isLoading, error]);
 
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -185,14 +211,14 @@ export default function MyBookingsScreen() {
 
   // Filter slots based on status
   const getActiveBookings = () => {
-    return userSlots.filter(slot => {
+    return allSlots.filter((slot: Slot) => {
       const state = getSlotState(slot.slotTime);
       return state === 'waiting' || state === 'active';
     });
   };
 
   const getHistoryBookings = () => {
-    return userSlots.filter(slot => {
+    return allSlots.filter((slot: Slot) => {
       const state = getSlotState(slot.slotTime);
       return state === 'expired';
     });
@@ -324,23 +350,19 @@ export default function MyBookingsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Debug Info */}
+      {/* Simplified Debug Info */}
       <View style={[styles.debugInfo, { backgroundColor: theme.dark ? "#1a1a1a" : "#f0f0f0" }]}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-            Debug: {userSlots.length} slots | User: {user?.id?.slice(-8)} | Loading: {isLoading ? 'Yes' : 'No'}
+            Slots: {allSlots.length} total ({activeSlots.length} active, {historySlots.length} history) | {isLoading ? 'Loading...' : 'Ready'}
           </Text>
-          {userSlots.length > 0 && (
-            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666", fontSize: 10 }]}>
-              AuthCodes: {userSlots.map(slot => slot.authCode || 'MISSING').join(', ')}
-            </Text>
-          )}
         </View>
         <TouchableOpacity
           style={styles.refreshButton}
           onPress={async () => {
-            console.log('🔄 Manual refresh triggered');
-            await refetch();
+            console.log('🔄 Refreshing bookings data');
+            await refetchActive();
+            await refetchHistory();
           }}
         >
           <Text style={styles.refreshButtonText}>Refresh</Text>
@@ -369,7 +391,10 @@ export default function MyBookingsScreen() {
           </Text>
           <TouchableOpacity
             style={[styles.bookNowButton, { backgroundColor: "#F44336" }]}
-            onPress={() => refetch()}
+            onPress={async () => {
+              await refetchActive();
+              await refetchHistory();
+            }}
           >
             <Text style={styles.bookNowText}>Retry</Text>
           </TouchableOpacity>
@@ -431,7 +456,8 @@ export default function MyBookingsScreen() {
             refreshing={isRefreshing}
             onRefresh={async () => {
               setIsRefreshing(true);
-              await refetch();
+              await refetchActive();
+              await refetchHistory();
               setIsRefreshing(false);
             }}
             tintColor={theme.dark ? "#fff" : "#000"}

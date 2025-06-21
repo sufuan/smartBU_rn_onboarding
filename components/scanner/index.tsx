@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Stack, router } from "expo-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   AppState,
+  AppStateStatus,
   Platform,
   Pressable,
   SafeAreaView,
@@ -18,23 +19,28 @@ import Overlay from "./Overlay";
 
 export default function Scanner() {
   const qrLock = useRef(false);
-  const appState = useRef(AppState.currentState);
+  const appState = useRef<AppStateStatus>(AppState.currentState);
+  const [isAppActive, setIsAppActive] = useState(true);
   const [permission, requestPermission] = useCameraPermissions();
 
+  // Request permission on mount
   useEffect(() => {
-    if (!permission?.granted) {
+    if (!permission) return;
+    if (!permission.granted) {
       requestPermission();
     }
-  }, []);
+  }, [permission]);
 
+  // Handle app state changes
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
-      if (
-        appState.current.match(/inactive|background/) &&
-        nextAppState === "active"
-      ) {
+      const isActive = nextAppState === "active";
+      setIsAppActive(isActive);
+
+      if (isActive) {
         qrLock.current = false;
       }
+
       appState.current = nextAppState;
     });
 
@@ -85,12 +91,25 @@ export default function Scanner() {
 
   const handleGoBack = () => router.back();
 
-  if (!permission || !permission.granted) {
+  if (!permission) {
     return (
       <View style={styles.centered}>
         <Text style={{ color: "#000", fontSize: 16 }}>
-          Waiting for camera permission...
+          Checking camera permission...
         </Text>
+      </View>
+    );
+  }
+
+  if (!permission.granted) {
+    return (
+      <View style={styles.centered}>
+        <Text style={{ color: "#000", fontSize: 16, marginBottom: 10 }}>
+          Camera access is required
+        </Text>
+        <Pressable onPress={requestPermission}>
+          <Text style={{ color: "blue", fontSize: 16 }}>Grant Permission</Text>
+        </Pressable>
       </View>
     );
   }
@@ -108,11 +127,14 @@ export default function Scanner() {
         <View style={{ width: scale(40) }} />
       </View>
 
-      <CameraView
-        style={StyleSheet.absoluteFillObject}
-        facing="back"
-        onBarcodeScanned={handleQRCodeScanned}
-      />
+      {isAppActive && (
+        <CameraView
+          key={isAppActive ? "camera-active" : "camera-inactive"}
+          style={StyleSheet.absoluteFillObject}
+          facing="back"
+          onBarcodeScanned={handleQRCodeScanned}
+        />
+      )}
 
       <Overlay />
 
