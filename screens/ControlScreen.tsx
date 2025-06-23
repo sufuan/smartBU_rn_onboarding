@@ -56,6 +56,8 @@ export default function ControlScreen() {
     const fetchMachineData = async () => {
       if (!machineId) return;
 
+  
+
       try {
         const response = await axios.get(
           `${process.env.EXPO_PUBLIC_SERVER_URI}/api/machines/${machineId}`
@@ -65,8 +67,10 @@ export default function ControlScreen() {
           setMachineData(response.data.machine);
           console.log('🏭 Machine data loaded:', response.data.machine);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('❌ Error fetching machine data:', error);
+        console.error('❌ Failed machine ID:', machineId);
+        console.error('❌ Error details:', error.response?.data || error.message);
       }
     };
 
@@ -223,6 +227,34 @@ export default function ControlScreen() {
       return;
     }
 
+    // Check if cycle has already been started
+    if (cycleStarted) {
+      Alert.alert(
+        "Cycle Already Started",
+        "The washing cycle is already running. No need to start again.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
+    // Check if machine has been scanned
+    if (!scannedMachineId) {
+      Alert.alert(
+        "Machine Not Scanned",
+        "Please scan the machine QR code first before starting the cycle.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
+    console.log('🚀 Starting cycle with state:', {
+      cycleStarted,
+      scannedMachineId,
+      authCode,
+      userId,
+      machineId
+    });
+
     setIsLoading(true);
 
     try {
@@ -292,10 +324,47 @@ export default function ControlScreen() {
 
       console.log('🔍 QR Code scanned:', data);
       console.log('🏭 Machine data:', machineData);
+      console.log('🔍 Current state:', { scannedMachineId, cycleStarted });
+
+      // Check if machine has already been scanned and verified
+      if (scannedMachineId) {
+        Alert.alert(
+          "Already Scanned",
+          `Machine ${machineData?.machineId || scannedMachineId} has already been verified. ${cycleStarted ? 'Cycle is already running.' : 'You can start the cycle now.'}`,
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                qrLock.current = false;
+                setShowScanner(false);
+              },
+            },
+          ]
+        );
+        return;
+      }
+
+      // Check if cycle has already been started
+      if (cycleStarted) {
+        Alert.alert(
+          "Cycle Already Started",
+          "The washing cycle is already running. No need to scan again.",
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                qrLock.current = false;
+                setShowScanner(false);
+              },
+            },
+          ]
+        );
+        return;
+      }
 
       // Check if QR code matches expected format: "machineId:<machineId>"
       if (data.startsWith("machineId:")) {
-        const scannedMachineId = data.replace("machineId:", "");
+        const scannedMachineIdValue = data.replace("machineId:", "");
 
         // Validate it matches the slot's machine machineId (not the database ID)
         if (!machineData) {
@@ -310,8 +379,8 @@ export default function ControlScreen() {
           return;
         }
 
-        if (scannedMachineId !== machineData.machineId) {
-          Alert.alert("Error", `Wrong machine scanned.\nExpected: ${machineData.machineId}\nScanned: ${scannedMachineId}`, [
+        if (scannedMachineIdValue !== machineData.machineId) {
+          Alert.alert("Error", `Wrong machine scanned.\nExpected: ${machineData.machineId}\nScanned: ${scannedMachineIdValue}`, [
             {
               text: "OK",
               onPress: () => {
@@ -323,11 +392,11 @@ export default function ControlScreen() {
         }
 
         // Machine matches - close scanner and update state
-        setScannedMachineId(scannedMachineId);
+        setScannedMachineId(scannedMachineIdValue);
         setShowScanner(false);
         qrLock.current = false;
 
-        Alert.alert("Success", `Machine ${scannedMachineId} verified! You can now start the cycle.`);
+        Alert.alert("Success", `Machine ${scannedMachineIdValue} verified! You can now start the cycle.`);
       } else {
         Alert.alert("Error", "Invalid QR code format", [
           {
@@ -525,14 +594,21 @@ export default function ControlScreen() {
             style={[
               styles.button,
               styles.scanButton,
-              { opacity: !isSlotTimeValid() ? 0.5 : 1 }
+              { opacity: !isSlotTimeValid() || !!scannedMachineId || cycleStarted ? 0.5 : 1 }
             ]}
             onPress={handleScanQRCode}
-            disabled={!isSlotTimeValid()}
+            disabled={!isSlotTimeValid() || !!scannedMachineId || cycleStarted}
           >
             <Ionicons name="qr-code" size={20} color="#fff" />
             <Text style={styles.buttonText}>
-              {!isSlotTimeValid() ? 'Scanner Not Available' : 'Scan QR Code'}
+              {!isSlotTimeValid()
+                ? 'Scanner Not Available'
+                : scannedMachineId
+                  ? 'Already Scanned'
+                  : cycleStarted
+                    ? 'Cycle Running'
+                    : 'Scan QR Code'
+              }
             </Text>
           </Pressable>
 
@@ -540,13 +616,18 @@ export default function ControlScreen() {
             style={[
               styles.button,
               styles.startButton,
-              { opacity: isLoading || !authCode || !scannedMachineId || !isSlotTimeValid() ? 0.5 : 1 }
+              { opacity: isLoading || !authCode || !scannedMachineId || !isSlotTimeValid() || cycleStarted ? 0.5 : 1 }
             ]}
             onPress={handleStartCycle}
-            disabled={isLoading || !authCode || !scannedMachineId || !isSlotTimeValid()}
+            disabled={isLoading || !authCode || !scannedMachineId || !isSlotTimeValid() || cycleStarted}
           >
             {isLoading ? (
               <Text style={styles.buttonText}>Starting...</Text>
+            ) : cycleStarted ? (
+              <>
+                <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                <Text style={styles.buttonText}>Cycle Running</Text>
+              </>
             ) : (
               <>
                 <Ionicons name="play-circle" size={20} color="#fff" />

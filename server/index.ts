@@ -25,7 +25,15 @@ const initializeMQTT = () => {
       return;
     }
     
-    const mqttBrokerUrl = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com:1883';
+    const mqttBroker = process.env.MQTT_BROKER || 'mqtt://localhost:1883';
+
+    // Skip MQTT initialization if using mock
+    if (mqttBroker === 'mock') {
+      console.log('📡 MQTT broker: mock (testing mode)');
+      return;
+    }
+
+    const mqttBrokerUrl = mqttBroker;
     console.log(`📡 MQTT broker: ${mqttBrokerUrl}`);
     
     mqttClient = mqtt.connect(mqttBrokerUrl, {
@@ -133,8 +141,16 @@ const generateAuthCode = (): string => {
 // Utility function to send MQTT message to ESP32
 const sendMQTTMessage = (topic: string, message: any) => {
   try {
+    const mqttBroker = process.env.MQTT_BROKER || 'mock';
+
+    if (mqttBroker === 'mock') {
+      console.log(`📤 [MOCK] MQTT message to ${topic}:`, message);
+      return true;
+    }
+
     if (mqttClient && mqttClient.connected) {
-      mqttClient.publish(topic, JSON.stringify(message));
+      const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
+      mqttClient.publish(topic, messageStr);
       console.log(`📤 MQTT message sent to ${topic}:`, message);
       return true;
     } else {
@@ -670,9 +686,11 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
   try {
     const { userId, slotTime, machineId, authCode } = req.body;
 
+    console.log(`🎯 Validating slot for ${userId}, machineId: ${machineId}, slotTime: ${slotTime}`);
+
     if (!userId || !slotTime || !machineId || !authCode) {
       return res.status(400).json({
-        error: "Missing required fields: userId, slotTime, machineId, authCode"
+        error: "Invalid slot time"
       });
     }
 
@@ -683,24 +701,25 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
     });
 
     if (!user?.stripeCustomerId) {
+      console.log(`❌ No subscription for user: ${userId}`);
       return res.status(403).json({
-        error: "Subscription required",
-        message: "Active subscription required to control machines"
+        error: "Subscription required"
       });
     }
+
+    console.log(`✅ User subscription verified: ${userId}`);
 
     // Parse slot time
     const slotTimeDate = new Date(slotTime);
     const now = new Date();
 
-    // Validate slot time is within 30 minutes of current time
-    const timeDiff = Math.abs(slotTimeDate.getTime() - now.getTime());
-    const thirtyMinutes = 30 * 60 * 1000;
+    // Validate current time is within slotTime to slotTime + 30 minutes window
+    const slotEndTime = new Date(slotTimeDate.getTime() + 30 * 60 * 1000);
 
-    if (timeDiff > thirtyMinutes) {
+    if (now < slotTimeDate || now > slotEndTime) {
+      console.log(`❌ Slot time invalid or not found for ${userId}, machineId: ${machineId}`);
       return res.status(400).json({
-        error: "Invalid slot time",
-        message: "Slot time must be within 30 minutes of current time"
+        error: "Invalid slot time"
       });
     }
 
@@ -720,11 +739,13 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
     });
 
     if (!slot) {
+      console.log(`❌ Invalid auth code for slot: ${userId}, ${machineId}, ${slotTime}`);
       return res.status(401).json({
-        error: "Invalid auth code",
-        message: "No matching slot found with provided details"
+        error: "Invalid auth code"
       });
     }
+
+    console.log(`✅ Slot validated: ${slot.id}`);
 
     // Update machine status to InUse
     await prisma.machine.update({
@@ -732,13 +753,7 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
       data: { status: 'InUse' }
     });
 
-    // Update slot status to Completed (cycle started)
-    await prisma.slot.update({
-      where: { id: slot.id },
-      data: { status: 'Completed' }
-    });
-
-    // Log the usage
+    // Create initial UsageLog entry for cycle start
     await prisma.usageLog.create({
       data: {
         userId,
@@ -748,14 +763,11 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
       },
     });
 
-    // Send MQTT message to ESP32 to start the cycle
-    const mqttSuccess = sendMQTTMessage(`laundry/${slot.machine.machineId}/control`, {
-      action: 'start_cycle',
-      duration: 30, // 30 minutes
-      userId: userId,
-      slotId: slot.id,
-      timestamp: new Date().toISOString()
-    });
+    console.log(`✅ UsageLog created: action=Started, slotId=${slot.id}`);
+
+    // Send MQTT message to ESP32 relay to start the cycle
+    sendMQTTMessage('washer/control', 'start');
+    console.log(`📤 Published start to washer/control`);
 
     // Send display update
     sendMQTTMessage(`laundry/${slot.machine.machineId}/display`, {
@@ -764,36 +776,65 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
       line3: `User: ${user.name}`,
     });
 
-    // Create notification for cycle start
-    await prisma.notification.create({
-      data: {
-        userId,
-        slotId: slot.id,
-        title: "Cycle Started!",
-        message: `Your washing cycle on ${slot.machine.machineId} has started. It will complete in 30 minutes.`,
-        redirect_link: `/control/${slot.id}`,
-      },
-    });
+    // Schedule 30-minute timeout for cycle completion
+    setTimeout(async () => {
+      try {
+        console.log(`⏰ 30-minute timeout reached for slotId: ${slot.id}`);
 
-    console.log(`✅ Cycle started for machine ${slot.machine.machineId} by user ${user.name}`);
-    console.log(`📤 MQTT message sent: ${mqttSuccess ? 'Success' : 'Failed'}`);
+        // Send MQTT stop message
+        sendMQTTMessage('washer/control', 'stop');
+        console.log(`📤 Published stop to washer/control`);
+
+        // Update slot status to Completed
+        await prisma.slot.update({
+          where: { id: slot.id },
+          data: { status: 'Completed' }
+        });
+        console.log(`✅ Slot updated to Completed: ${slot.id}`);
+
+        // Create notification for cycle completion
+        await prisma.notification.create({
+          data: {
+            userId,
+            slotId: slot.id,
+            title: "Cycle Finished",
+            message: "Your washing cycle has finished",
+          },
+        });
+        console.log(`✅ Notification created: Cycle Finished for ${userId}`);
+
+        // Create completion UsageLog entry
+        await prisma.usageLog.create({
+          data: {
+            userId,
+            machineId: slot.machine.id,
+            slotId: slot.id,
+            action: 'Completed',
+          },
+        });
+        console.log(`✅ UsageLog created: action=Completed, slotId=${slot.id}`);
+
+        // Update machine status back to Available
+        await prisma.machine.update({
+          where: { id: slot.machine.id },
+          data: { status: 'Available' }
+        });
+
+      } catch (error) {
+        console.error(`❌ Error in 30-minute timeout for slot ${slot.id}:`, error);
+      }
+    }, 30 * 60 * 1000); // 30 minutes
+
+    console.log(`⏰ Scheduled stop for slotId=${slot.id} in 30 minutes`);
 
     res.status(200).json({
-      status: "success",
-      message: "Washing cycle started successfully",
-      slot: {
-        id: slot.id,
-        machineId: slot.machine.machineId,
-        duration: 30,
-        startTime: new Date().toISOString()
-      }
+      status: "success"
     });
 
   } catch (error) {
-    console.error("❌ Error starting cycle:", error);
+    console.error("❌ Error processing control request:", error);
     res.status(500).json({
-      error: "Internal server error",
-      message: "Failed to start washing cycle"
+      error: "Server error"
     });
   }
 }));

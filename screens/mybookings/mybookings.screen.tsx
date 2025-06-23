@@ -26,6 +26,7 @@ interface Slot {
   status: string;
   authCode: string; // Add auth code field
   machine?: {
+    id?: string; // Database ObjectId
     machineId?: string;
     name?: string;
     location?: string;
@@ -59,8 +60,25 @@ export default function MyBookingsScreen() {
     refetchOnWindowFocus: true,
   });
 
-  // Combine all slots for processing
-  const allSlots = [...activeSlots, ...historySlots];
+  // Combine all slots for processing, ensuring uniqueness by slot ID
+  const allSlots = React.useMemo(() => {
+    const slotMap = new Map();
+
+    // Add active slots first (they take priority)
+    activeSlots.forEach(slot => {
+      slotMap.set(slot.id, slot);
+    });
+
+    // Add history slots only if not already present
+    historySlots.forEach(slot => {
+      if (!slotMap.has(slot.id)) {
+        slotMap.set(slot.id, slot);
+      }
+    });
+
+    return Array.from(slotMap.values());
+  }, [activeSlots, historySlots]);
+
   const isLoading = isLoadingActive || isLoadingHistory;
   const error = activeError || historyError;
 
@@ -236,12 +254,29 @@ export default function MyBookingsScreen() {
       return;
     }
 
+    console.log('🎯 Navigating to Control Screen with slot:', {
+      slotId: slot.id,
+      machineId: slot.machineId,
+      machineData: slot.machine,
+      authCode: slot.authCode
+    });
+
+    // Ensure we use the correct database ObjectId for the machine
+    const correctMachineId = slot.machine?.id || slot.machineId;
+
+    console.log('🔧 Machine ID fix:', {
+      originalMachineId: slot.machineId,
+      machineObjectId: slot.machine?.id,
+      finalMachineId: correctMachineId,
+      isValidObjectId: correctMachineId?.length === 24
+    });
+
     // Navigate to ControlScreen with slot details
     router.push({
       pathname: "/(routes)/control",
       params: {
         userId: user?.id,
-        machineId: slot.machineId,
+        machineId: correctMachineId, // Use the correct database ObjectId
         slotTime: getSlotTimeString(slot.slotTime),
         authCode: slot.authCode, // Pass the actual auth code from the slot
       },
