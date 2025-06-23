@@ -21,6 +21,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
+import { useCycleStatus } from "../hooks/useCycleStatus";
 
 // Navigation params interface removed - using direct param access
 
@@ -31,18 +32,34 @@ export default function ControlScreen() {
 
   // Get navigation params with proper typing
   const userId = (params.userId as string) || user?.id;
-  const machineId = params.machineId as string; // This is the database ID
+  const machineId = params.machineId as string; // This is the database ObjectId
   const slotTime = params.slotTime ? new Date(params.slotTime as string) : new Date();
   const initialAuthCode = (params.authCode as string) || "";
 
   // State to store the actual machine data
   const [machineData, setMachineData] = useState<any>(null);
 
+  // State to store the slot ID (we'll get this from finding the slot)
+  const [slotId, setSlotId] = useState<string | null>(null);
+
+  // Use cycle status hook to sync with backend
+  const {
+    cycleStarted: backendCycleStarted,
+    cycleCompleted: backendCycleCompleted,
+    cycleStartTime: backendCycleStartTime,
+    timeRemaining: backendTimeRemaining,
+    machineStatus: backendMachineStatus,
+    isLoading: cycleStatusLoading,
+    error: cycleStatusError,
+    refetch: refetchCycleStatus,
+  } = useCycleStatus(slotId);
+
   // State variables
   const [authCode, setAuthCode] = useState(initialAuthCode);
   const [isLoading, setIsLoading] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [cycleStarted, setCycleStarted] = useState(false);
+  const [cycleStartTime, setCycleStartTime] = useState<Date | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const [scannedMachineId, setScannedMachineId] = useState<string | null>(null);
   const [countdownToSlot, setCountdownToSlot] = useState<number | null>(null);
@@ -51,31 +68,77 @@ export default function ControlScreen() {
   // Camera permissions
   const [permission, requestPermission] = useCameraPermissions();
 
-  // Fetch machine data to get the actual machineId for QR validation
+  // Fetch machine data and find slot ID
   useEffect(() => {
-    const fetchMachineData = async () => {
-      if (!machineId) return;
-
-  
+    const fetchMachineDataAndSlot = async () => {
+      if (!machineId || !userId) return;
 
       try {
-        const response = await axios.get(
+        // Fetch machine data
+        const machineResponse = await axios.get(
           `${process.env.EXPO_PUBLIC_SERVER_URI}/api/machines/${machineId}`
         );
 
-        if (response.data.success) {
-          setMachineData(response.data.machine);
-          console.log('🏭 Machine data loaded:', response.data.machine);
+        if (machineResponse.data.success) {
+          setMachineData(machineResponse.data.machine);
+        }
+
+        // Find the slot ID by matching user, machine, slot time, and auth code
+        const slotsResponse = await axios.get(
+          `${process.env.EXPO_PUBLIC_SERVER_URI}/api/user-slots?userId=${userId}`
+        );
+
+        if (slotsResponse.data.success) {
+          const matchingSlot = slotsResponse.data.slots.find((slot: any) =>
+            slot.machineId === machineId &&
+            slot.authCode === initialAuthCode &&
+            new Date(slot.slotTime).getTime() === slotTime.getTime()
+          );
+
+          if (matchingSlot) {
+            setSlotId(matchingSlot.id);
+          }
         }
       } catch (error: any) {
-        console.error('❌ Error fetching machine data:', error);
+        console.error('❌ Error fetching machine data or slot:', error);
         console.error('❌ Failed machine ID:', machineId);
         console.error('❌ Error details:', error.response?.data || error.message);
       }
     };
 
-    fetchMachineData();
-  }, [machineId]);
+    fetchMachineDataAndSlot();
+  }, [machineId, userId, initialAuthCode, slotTime]);
+
+  // Sync frontend state with backend cycle status
+  useEffect(() => {
+    if (backendCycleStarted !== undefined) {
+      console.log('🔄 Syncing frontend state with backend:', {
+        backendCycleStarted,
+        backendCycleCompleted,
+        backendCycleStartTime,
+        backendTimeRemaining
+      });
+
+      // Update local state based on backend state
+      setCycleStarted(backendCycleStarted && !backendCycleCompleted);
+
+      if (backendCycleStartTime) {
+        setCycleStartTime(backendCycleStartTime);
+      }
+
+      // If backend shows cycle completed, reset local state
+      if (backendCycleCompleted) {
+        setCycleStarted(false);
+        setCycleStartTime(null);
+        setTimeRemaining(null);
+      }
+
+      // If cycle is running and we have backend time remaining, use it
+      if (backendCycleStarted && !backendCycleCompleted && backendTimeRemaining !== null) {
+        setTimeRemaining(backendTimeRemaining);
+      }
+    }
+  }, [backendCycleStarted, backendCycleCompleted, backendCycleStartTime, backendTimeRemaining]);
 
   // Refs
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -143,12 +206,7 @@ export default function ControlScreen() {
 
   // Initialize countdown to slot time and set up real-time updates
   useEffect(() => {
-    console.log('🚀 Initializing ControlScreen with params:', {
-      userId,
-      machineId,
-      slotTime: slotTime.toISOString(),
-      authCode: initialAuthCode
-    });
+
 
     // Function to update countdown and slot state based on current time
     const updateCountdown = () => {
@@ -192,29 +250,56 @@ export default function ControlScreen() {
     };
   }, [slotTime]);
 
-  // Note: Countdown is now handled by real-time updates in the main useEffect
-  // This effect is kept for the cycle timer only
-
+  // Real-time cycle timer that calculates remaining time based on actual start time and slot expiration
   useEffect(() => {
-    if (timeRemaining !== null && timeRemaining > 0) {
-      timerRef.current = setInterval(() => {
-        setTimeRemaining(prev => {
-          if (prev === null || prev <= 1) {
-            Alert.alert("Cycle Finished", "Your washing cycle is complete!");
-            router.push("/(tabs)/services" as any);
-            return null;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else if (timeRemaining === 0) {
-      if (timerRef.current) clearInterval(timerRef.current);
+    if (cycleStarted && cycleStartTime) {
+      const updateCycleTimer = () => {
+        const now = new Date();
+        const slotEndTime = new Date(slotTime.getTime() + 30 * 60 * 1000);
+        const elapsedMs = now.getTime() - cycleStartTime.getTime();
+        const elapsedSeconds = Math.floor(elapsedMs / 1000);
+
+        // Calculate remaining time considering both cycle duration and slot expiration
+        const timeUntilSlotExpires = Math.max(0, Math.floor((slotEndTime.getTime() - now.getTime()) / 1000));
+        const maxCycleSeconds = 30 * 60; // 30 minutes
+        const cycleTimeRemaining = Math.max(0, maxCycleSeconds - elapsedSeconds);
+
+        // Use the minimum of cycle time remaining and time until slot expires
+        const remainingSeconds = Math.min(cycleTimeRemaining, timeUntilSlotExpires);
+
+        setTimeRemaining(remainingSeconds);
+
+        // Check if cycle is complete
+        if (remainingSeconds <= 0) {
+          setCycleStarted(false);
+          setCycleStartTime(null);
+          setTimeRemaining(null);
+          Alert.alert("Cycle Finished", "Your washing cycle is complete!");
+          router.push("/(tabs)/mybookings" as any);
+        }
+      };
+
+      // Update immediately
+      updateCycleTimer();
+
+      // Set up interval to update every second
+      timerRef.current = setInterval(updateCycleTimer, 1000);
+    } else {
+      // Clear timer if cycle not started
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      setTimeRemaining(null);
     }
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
     };
-  }, [timeRemaining]);
+  }, [cycleStarted, cycleStartTime]);
 
   const handleStartCycle = async () => {
     if (!userId || !machineId || !authCode) {
@@ -227,8 +312,8 @@ export default function ControlScreen() {
       return;
     }
 
-    // Check if cycle has already been started
-    if (cycleStarted) {
+    // Check if cycle has already been started (local or backend state)
+    if (cycleStarted || backendCycleStarted) {
       Alert.alert(
         "Cycle Already Started",
         "The washing cycle is already running. No need to start again.",
@@ -273,7 +358,12 @@ export default function ControlScreen() {
       if (response.data.status === "success") {
         Alert.alert("Success", "Cycle started");
         setCycleStarted(true);
-        setTimeRemaining(30 * 60);
+        setCycleStartTime(new Date()); // Set the actual start time for real-time countdown
+
+        // Refetch cycle status from backend to sync state
+        if (refetchCycleStatus) {
+          setTimeout(() => refetchCycleStatus(), 1000); // Small delay to ensure backend is updated
+        }
       } else {
         Alert.alert("Error", "Failed to start cycle");
       }
@@ -292,6 +382,28 @@ export default function ControlScreen() {
           },
           { text: "Cancel", style: "cancel" },
         ]);
+      } else if (error.response?.status === 409) {
+        // Cycle already started - sync with backend state
+        const responseData = error.response.data;
+        Alert.alert(
+          "Cycle Already Running",
+          responseData.message || "This washing cycle is already running",
+          [{ text: "OK" }]
+        );
+
+        // Update local state to match backend
+        setCycleStarted(true);
+        if (responseData.cycleStartTime) {
+          setCycleStartTime(new Date(responseData.cycleStartTime));
+        }
+        if (responseData.timeRemaining !== undefined) {
+          setTimeRemaining(responseData.timeRemaining);
+        }
+
+        // Refetch cycle status to ensure full sync
+        if (refetchCycleStatus) {
+          setTimeout(() => refetchCycleStatus(), 500);
+        }
       } else {
         Alert.alert("Error", "Failed to start cycle");
       }
@@ -344,8 +456,8 @@ export default function ControlScreen() {
         return;
       }
 
-      // Check if cycle has already been started
-      if (cycleStarted) {
+      // Check if cycle has already been started (local or backend state)
+      if (cycleStarted || backendCycleStarted) {
         Alert.alert(
           "Cycle Already Started",
           "The washing cycle is already running. No need to scan again.",
@@ -496,10 +608,12 @@ export default function ControlScreen() {
         </View>
 
         {/* Cycle Timer */}
-        {cycleStarted && timeRemaining !== null && (
+        {(cycleStarted || backendCycleStarted) && (timeRemaining !== null || backendTimeRemaining !== null) && (
           <View style={styles.timerContainer}>
             <Text style={[styles.timerLabel, { color: "#fff" }]}>Cycle Time Remaining</Text>
-            <Text style={[styles.timerText, { color: "#fff" }]}>{formatTimer(timeRemaining)}</Text>
+            <Text style={[styles.timerText, { color: "#fff" }]}>
+              {formatTimer(backendTimeRemaining !== null ? backendTimeRemaining : (timeRemaining || 0))}
+            </Text>
           </View>
         )}
 
@@ -576,6 +690,26 @@ export default function ControlScreen() {
             <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
               Slot Valid (Active): {isSlotTimeValid() ? 'YES' : 'NO'}
             </Text>
+            {(cycleStarted || backendCycleStarted) && (
+              <>
+                <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+                  Local Cycle: {cycleStarted ? 'Started' : 'Not Started'} | Backend: {backendCycleStarted ? 'Started' : 'Not Started'}
+                </Text>
+                {(cycleStartTime || backendCycleStartTime) && (
+                  <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+                    Start Time: {(backendCycleStartTime || cycleStartTime)?.toLocaleTimeString()}
+                  </Text>
+                )}
+                <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+                  Timer: Local={timeRemaining}s | Backend={backendTimeRemaining}s
+                </Text>
+                {slotId && (
+                  <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
+                    Slot ID: {slotId}
+                  </Text>
+                )}
+              </>
+            )}
             <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
               Scanner Available: {isSlotTimeValid() ? 'YES' : 'NO'}
             </Text>
@@ -597,11 +731,13 @@ export default function ControlScreen() {
               { opacity: !isSlotTimeValid() || !!scannedMachineId || cycleStarted ? 0.5 : 1 }
             ]}
             onPress={handleScanQRCode}
-            disabled={!isSlotTimeValid() || !!scannedMachineId || cycleStarted}
+            disabled={!isSlotTimeValid() || !!scannedMachineId || cycleStarted || backendCycleStarted || cycleStatusLoading}
           >
             <Ionicons name="qr-code" size={20} color="#fff" />
             <Text style={styles.buttonText}>
-              {!isSlotTimeValid()
+              {cycleStatusLoading
+                ? 'Loading...'
+                : !isSlotTimeValid()
                 ? 'Scanner Not Available'
                 : scannedMachineId
                   ? 'Already Scanned'
@@ -619,11 +755,11 @@ export default function ControlScreen() {
               { opacity: isLoading || !authCode || !scannedMachineId || !isSlotTimeValid() || cycleStarted ? 0.5 : 1 }
             ]}
             onPress={handleStartCycle}
-            disabled={isLoading || !authCode || !scannedMachineId || !isSlotTimeValid() || cycleStarted}
+            disabled={isLoading || !authCode || !scannedMachineId || !isSlotTimeValid() || cycleStarted || backendCycleStarted}
           >
             {isLoading ? (
               <Text style={styles.buttonText}>Starting...</Text>
-            ) : cycleStarted ? (
+            ) : (cycleStarted || backendCycleStarted) ? (
               <>
                 <Ionicons name="checkmark-circle" size={20} color="#fff" />
                 <Text style={styles.buttonText}>Cycle Running</Text>

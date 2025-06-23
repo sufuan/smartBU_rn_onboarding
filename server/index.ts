@@ -33,7 +33,8 @@ const initializeMQTT = () => {
       return;
     }
 
-    const mqttBrokerUrl = mqttBroker;
+    // Use MQTT_BROKER_URL if available, otherwise use MQTT_BROKER
+    const mqttBrokerUrl = process.env.MQTT_BROKER_URL || mqttBroker;
     console.log(`📡 MQTT broker: ${mqttBrokerUrl}`);
     
     mqttClient = mqtt.connect(mqttBrokerUrl, {
@@ -272,7 +273,7 @@ app.get("/api/user-slots", isAuthenticated as any, asyncHandler(async (req: Auth
     const userId = req.user.id;
     const now = new Date();
 
-    console.log(`🎯 Fetching user slots for user: ${userId}`);
+
 
     // Get user's active slots (upcoming and current within 30-minute window)
     const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
@@ -300,7 +301,7 @@ app.get("/api/user-slots", isAuthenticated as any, asyncHandler(async (req: Auth
       },
     });
 
-    console.log(`✅ Found ${userSlots.length} active user slots`);
+
 
     res.status(200).json({
       success: true,
@@ -351,23 +352,43 @@ app.get("/api/machines", asyncHandler(async (req: Request, res: Response) => {
   }
 }));
 
-// Get Single Machine by Database ID Endpoint
+// Get Single Machine by Database ID or MachineId Endpoint
 app.get("/api/machines/:id", asyncHandler(async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const machine = await prisma.machine.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        machineId: true,
-        qrCode: true,
-        status: true,
-        location: true,
-        createdAt: true,
-        updatedAt: true,
-      }
-    });
+    // Check if the id is a valid ObjectId (24 hex characters) or a machineId
+    let machine;
+
+    if (id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id)) {
+      // It's a valid ObjectId, search by id
+      machine = await prisma.machine.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          machineId: true,
+          qrCode: true,
+          status: true,
+          location: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+    } else {
+      // It's likely a machineId (like "WASHER-001"), search by machineId
+      machine = await prisma.machine.findUnique({
+        where: { machineId: id },
+        select: {
+          id: true,
+          machineId: true,
+          qrCode: true,
+          status: true,
+          location: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+    }
 
     if (!machine) {
       return res.status(404).json({
@@ -747,6 +768,48 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
 
     console.log(`✅ Slot validated: ${slot.id}`);
 
+    // Check if cycle has already been started by looking for existing 'Started' UsageLog
+    const existingStartLog = await prisma.usageLog.findFirst({
+      where: {
+        slotId: slot.id,
+        action: 'Started'
+      }
+    });
+
+    const existingCompletedLog = await prisma.usageLog.findFirst({
+      where: {
+        slotId: slot.id,
+        action: 'Completed'
+      }
+    });
+
+    // If cycle already started and not completed, prevent duplicate start
+    if (existingStartLog && !existingCompletedLog) {
+      console.log(`❌ Cycle already started for slot: ${slot.id} at ${existingStartLog.createdAt}`);
+
+      // Calculate remaining time for the already running cycle
+      // Reuse existing slotEndTime variable from earlier in the function
+      const currentTimeForDuplicate = new Date();
+      const elapsedMs = currentTimeForDuplicate.getTime() - existingStartLog.createdAt.getTime();
+      const elapsedSeconds = Math.floor(elapsedMs / 1000);
+
+      // Calculate remaining time until slot expires (not full 30 minutes)
+      const timeUntilSlotExpires = Math.max(0, Math.floor((slotEndTime.getTime() - currentTimeForDuplicate.getTime()) / 1000));
+      const maxCycleSeconds = 30 * 60; // 30 minutes
+      const cycleElapsedSeconds = Math.floor((currentTimeForDuplicate.getTime() - existingStartLog.createdAt.getTime()) / 1000);
+      const remainingSeconds = Math.min(
+        Math.max(0, maxCycleSeconds - cycleElapsedSeconds),
+        timeUntilSlotExpires
+      );
+
+      return res.status(409).json({
+        error: "Cycle already started",
+        message: "This washing cycle is already running",
+        cycleStartTime: existingStartLog.createdAt,
+        timeRemaining: remainingSeconds
+      });
+    }
+
     // Update machine status to InUse
     await prisma.machine.update({
       where: { id: slot.machine.id },
@@ -765,21 +828,43 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
 
     console.log(`✅ UsageLog created: action=Started, slotId=${slot.id}`);
 
+    // Calculate actual cycle duration based on remaining slot time
+    // Reuse existing now and slotEndTime variables from earlier in the function
+    const currentTime = new Date(); // Use different variable name to avoid conflict
+    const timeUntilSlotExpires = Math.max(0, Math.floor((slotEndTime.getTime() - currentTime.getTime()) / 1000));
+    const maxCycleSeconds = 30 * 60; // 30 minutes
+    const actualCycleDuration = Math.min(maxCycleSeconds, timeUntilSlotExpires);
+    const actualCycleDurationMs = actualCycleDuration * 1000;
+
+    console.log(`⏰ Cycle duration calculation:`, {
+      slotTime: slotTimeDate.toISOString(),
+      slotEndTime: slotEndTime.toISOString(),
+      currentTime: currentTime.toISOString(),
+      timeUntilSlotExpires: timeUntilSlotExpires,
+      maxCycleSeconds: maxCycleSeconds,
+      actualCycleDuration: actualCycleDuration,
+      actualCycleDurationMinutes: Math.floor(actualCycleDuration / 60)
+    });
+
     // Send MQTT message to ESP32 relay to start the cycle
     sendMQTTMessage('washer/control', 'start');
     console.log(`📤 Published start to washer/control`);
 
-    // Send display update
+    // Send display update with actual remaining time
+    const displayMinutes = Math.floor(actualCycleDuration / 60);
+    const displaySeconds = actualCycleDuration % 60;
+    const displayTime = `${displayMinutes.toString().padStart(2, '0')}:${displaySeconds.toString().padStart(2, '0')}`;
+
     sendMQTTMessage(`laundry/${slot.machine.machineId}/display`, {
       line1: "Cycle Running",
-      line2: `30:00 remaining`,
+      line2: `${displayTime} remaining`,
       line3: `User: ${user.name}`,
     });
 
-    // Schedule 30-minute timeout for cycle completion
+    // Schedule timeout for cycle completion based on actual duration
     setTimeout(async () => {
       try {
-        console.log(`⏰ 30-minute timeout reached for slotId: ${slot.id}`);
+        console.log(`⏰ Cycle timeout reached for slotId: ${slot.id} after ${Math.floor(actualCycleDuration / 60)} minutes`);
 
         // Send MQTT stop message
         sendMQTTMessage('washer/control', 'stop');
@@ -821,11 +906,11 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
         });
 
       } catch (error) {
-        console.error(`❌ Error in 30-minute timeout for slot ${slot.id}:`, error);
+        console.error(`❌ Error in cycle timeout for slot ${slot.id}:`, error);
       }
-    }, 30 * 60 * 1000); // 30 minutes
+    }, actualCycleDurationMs); // Use actual calculated duration
 
-    console.log(`⏰ Scheduled stop for slotId=${slot.id} in 30 minutes`);
+    console.log(`⏰ Scheduled stop for slotId=${slot.id} in ${Math.floor(actualCycleDuration / 60)} minutes (${actualCycleDuration} seconds)`);
 
     res.status(200).json({
       status: "success"
@@ -833,6 +918,92 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
 
   } catch (error) {
     console.error("❌ Error processing control request:", error);
+    res.status(500).json({
+      error: "Server error"
+    });
+  }
+}));
+
+// Get Cycle Status Endpoint - Check if cycle is running for a slot
+app.get("/api/cycle-status/:slotId", isAuthenticated as any, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { slotId } = req.params;
+    const userId = req.user.id;
+
+    console.log(`🔍 Checking cycle status for slot: ${slotId}, user: ${userId}`);
+
+    // Find the slot and check if it belongs to the user
+    const slot = await prisma.slot.findFirst({
+      where: {
+        id: slotId,
+        userId: userId,
+      },
+      include: {
+        machine: true,
+        usageLogs: {
+          orderBy: { createdAt: 'desc' },
+          take: 10 // Get recent usage logs
+        }
+      }
+    });
+
+    if (!slot) {
+      return res.status(404).json({
+        error: "Slot not found"
+      });
+    }
+
+    // Check if cycle has been started by looking for 'Started' usage log
+    const startedLog = slot.usageLogs.find(log => log.action === 'Started');
+    const completedLog = slot.usageLogs.find(log => log.action === 'Completed');
+
+    // Determine cycle status
+    const cycleStarted = !!startedLog && !completedLog;
+    const cycleCompleted = !!completedLog;
+    const cycleStartTime = startedLog?.createdAt || null;
+
+    // Calculate remaining time if cycle is running
+    let timeRemaining = null;
+    if (cycleStarted && cycleStartTime) {
+      const now = new Date();
+      const slotEndTime = new Date(slot.slotTime.getTime() + 30 * 60 * 1000);
+      const elapsedMs = now.getTime() - new Date(cycleStartTime).getTime();
+      const elapsedSeconds = Math.floor(elapsedMs / 1000);
+
+      // Calculate remaining time considering both cycle duration and slot expiration
+      const timeUntilSlotExpires = Math.max(0, Math.floor((slotEndTime.getTime() - now.getTime()) / 1000));
+      const maxCycleSeconds = 30 * 60; // 30 minutes
+      const cycleTimeRemaining = Math.max(0, maxCycleSeconds - elapsedSeconds);
+
+      // Use the minimum of cycle time remaining and time until slot expires
+      timeRemaining = Math.min(cycleTimeRemaining, timeUntilSlotExpires);
+    }
+
+    console.log(`✅ Cycle status for slot ${slotId}:`, {
+      cycleStarted,
+      cycleCompleted,
+      cycleStartTime,
+      timeRemaining,
+      machineStatus: slot.machine.status
+    });
+
+    res.status(200).json({
+      success: true,
+      slotId: slot.id,
+      slotStatus: slot.status,
+      machineStatus: slot.machine.status,
+      cycleStarted,
+      cycleCompleted,
+      cycleStartTime,
+      timeRemaining,
+      usageLogs: slot.usageLogs.map(log => ({
+        action: log.action,
+        createdAt: log.createdAt
+      }))
+    });
+
+  } catch (error) {
+    console.error("❌ Error checking cycle status:", error);
     res.status(500).json({
       error: "Server error"
     });

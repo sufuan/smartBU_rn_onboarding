@@ -254,29 +254,12 @@ export default function MyBookingsScreen() {
       return;
     }
 
-    console.log('🎯 Navigating to Control Screen with slot:', {
-      slotId: slot.id,
-      machineId: slot.machineId,
-      machineData: slot.machine,
-      authCode: slot.authCode
-    });
-
-    // Ensure we use the correct database ObjectId for the machine
-    const correctMachineId = slot.machine?.id || slot.machineId;
-
-    console.log('🔧 Machine ID fix:', {
-      originalMachineId: slot.machineId,
-      machineObjectId: slot.machine?.id,
-      finalMachineId: correctMachineId,
-      isValidObjectId: correctMachineId?.length === 24
-    });
-
     // Navigate to ControlScreen with slot details
     router.push({
       pathname: "/(routes)/control",
       params: {
         userId: user?.id,
-        machineId: correctMachineId, // Use the correct database ObjectId
+        machineId: slot.machineId, // Use the database ObjectId (this is what the backend expects)
         slotTime: getSlotTimeString(slot.slotTime),
         authCode: slot.authCode, // Pass the actual auth code from the slot
       },
