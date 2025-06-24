@@ -267,6 +267,95 @@ app.get("/me", isAuthenticated as any, asyncHandler(async (req: AuthenticatedReq
   }
 }));
 
+
+
+// updating push token
+app.put("/update-push-token", isAuthenticated, async (req, res) => {
+  try {
+    const user = await prisma.user.update({
+      where: {
+        id: req.user.id,
+      },
+      data: {
+        pushToken: req.body.pushToken,
+      },
+    });
+    res.status(201).json({
+      success: true,
+      user,
+    });
+  } catch (error) {
+    res.status(501).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+// get notifications
+app.get("/get-notifications", isAuthenticated, async (req, res, next) => {
+  try {
+    const notifications = await prisma.notification.findMany({
+      where: {
+        OR: [{ receiverId: req.user?.id }, { receiverId: "All" }],
+      },
+      include: {
+        user: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      notifications,
+    });
+  } catch (error) {
+    res.status(501).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+// delete notification
+app.delete(
+  "/delete-notification/:id",
+  isAuthenticated,
+  async (req, res, next) => {
+    try {
+      await prisma.notification.delete({
+        where: {
+          id: req.params.id,
+        },
+      });
+
+      const notifications = await prisma.notification.findMany({
+        where: {
+          OR: [{ receiverId: req.user?.id }, { receiverId: "All" }],
+        },
+        include: {
+          user: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+      res.status(201).json({
+        success: true,
+        notifications,
+      });
+    } catch (error) {
+      res.status(501).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+);
+
+
 // Get User Slots Endpoint - For "My Bookings" section
 app.get("/api/user-slots", isAuthenticated as any, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
