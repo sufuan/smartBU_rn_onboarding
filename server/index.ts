@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import express, { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import mqtt from "mqtt";
+import { startCycle, stopCycle, updateDisplay } from "./esp32";
 import { isAuthenticated } from "./middleware/auth.js";
 import prisma from "./utils/prisma.js";
 import { sendToken } from "./utils/sendToken.js";
@@ -24,7 +25,7 @@ const initializeMQTT = () => {
       console.log(`⚠️ MQTT connection disabled after ${MAX_MQTT_RECONNECT_ATTEMPTS} failed attempts.`);
       return;
     }
-    
+
     const mqttBroker = process.env.MQTT_BROKER || 'mqtt://localhost:1883';
 
     // Skip MQTT initialization if using mock
@@ -36,7 +37,7 @@ const initializeMQTT = () => {
     // Use MQTT_BROKER_URL if available, otherwise use MQTT_BROKER
     const mqttBrokerUrl = process.env.MQTT_BROKER_URL || mqttBroker;
     console.log(`📡 MQTT broker: ${mqttBrokerUrl}`);
-    
+
     mqttClient = mqtt.connect(mqttBrokerUrl, {
       reconnectPeriod: 10000, // Try to reconnect every 10 seconds
       connectTimeout: 30000, // 30 seconds timeout
@@ -45,7 +46,7 @@ const initializeMQTT = () => {
     mqttClient.on('connect', () => {
       console.log(`✅ MQTT client connected to ${mqttBrokerUrl}`);
       mqttReconnectAttempts = 0; // Reset counter on successful connection
-      
+
       // Subscribe to relevant topics
       mqttClient?.subscribe('laundry/+/status', (err) => {
         if (!err) {
@@ -57,12 +58,12 @@ const initializeMQTT = () => {
     mqttClient.on('error', (error) => {
       console.error('❌ MQTT connection error:', error);
       mqttReconnectAttempts++;
-      
+
       if (mqttClient) {
         mqttClient.end(true); // Force close connection
         mqttClient = null;
       }
-      
+
       if (mqttReconnectAttempts < MAX_MQTT_RECONNECT_ATTEMPTS) {
         console.log(`⚠️ MQTT reconnect attempt ${mqttReconnectAttempts}/${MAX_MQTT_RECONNECT_ATTEMPTS} in 10 seconds...`);
         setTimeout(initializeMQTT, 10000); // Try again in 10 seconds
@@ -73,12 +74,12 @@ const initializeMQTT = () => {
 
     mqttClient.on('message', (topic, message) => {
       console.log(`📨 MQTT message received on ${topic}:`, message.toString());
-      
+
       // Handle different message types
       if (topic.startsWith('laundry/') && topic.endsWith('/status')) {
         const machineId = topic.split('/')[1];
         const status = message.toString();
-        
+
         // Update machine status in the database
         updateMachineStatus(machineId, status).catch(error => {
           console.error(`❌ Error updating machine status: ${error}`);
@@ -98,20 +99,20 @@ async function updateMachineStatus(machineId: string, status: string) {
     const machine = await prisma.machine.findUnique({
       where: { machineId }
     });
-    
+
     if (machine) {
       // Map the status string to a valid MachineStatus enum value
       let machineStatus: 'Available' | 'InUse' | 'Offline' = 'Available';
-      
+
       if (status === 'in_use') machineStatus = 'InUse';
       else if (status === 'offline') machineStatus = 'Offline';
-      
+
       // Update the machine status
       await prisma.machine.update({
         where: { id: machine.id },
         data: { status: machineStatus }
       });
-      
+
       console.log(`✅ Updated status of machine ${machineId} to ${machineStatus}`);
     } else {
       console.warn(`⚠️ Machine with ID ${machineId} not found`);
@@ -936,19 +937,29 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
     });
 
     // Send MQTT message to ESP32 relay to start the cycle
-    sendMQTTMessage('washer/control', 'start');
-    console.log(`📤 Published start to washer/control`);
+    try {
+      await startCycle(slot.machine.machineId);
+      console.log(`📤 ESP32: Started cycle for machine ${slot.machine.machineId}`);
+    } catch (error) {
+      console.error(`❌ ESP32: Failed to start cycle for machine ${slot.machine.machineId}:`, error);
+      // Continue execution even if MQTT fails (for offline scenarios)
+    }
 
     // Send display update with actual remaining time
     const displayMinutes = Math.floor(actualCycleDuration / 60);
     const displaySeconds = actualCycleDuration % 60;
     const displayTime = `${displayMinutes.toString().padStart(2, '0')}:${displaySeconds.toString().padStart(2, '0')}`;
 
-    sendMQTTMessage(`laundry/${slot.machine.machineId}/display`, {
-      line1: "Cycle Running",
-      line2: `${displayTime} remaining`,
-      line3: `User: ${user.name}`,
-    });
+    try {
+      await updateDisplay(slot.machine.machineId, {
+        line1: "Cycle Running",
+        line2: `${displayTime} remaining`,
+        line3: `User: ${user.name}`,
+      });
+      console.log(`📺 ESP32: Updated display for machine ${slot.machine.machineId}`);
+    } catch (error) {
+      console.error(`❌ ESP32: Failed to update display for machine ${slot.machine.machineId}:`, error);
+    }
 
     // Schedule timeout for cycle completion based on actual duration
     setTimeout(async () => {
@@ -956,8 +967,12 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
         console.log(`⏰ Cycle timeout reached for slotId: ${slot.id} after ${Math.floor(actualCycleDuration / 60)} minutes`);
 
         // Send MQTT stop message
-        sendMQTTMessage('washer/control', 'stop');
-        console.log(`📤 Published stop to washer/control`);
+        try {
+          await stopCycle(slot.machine.machineId);
+          console.log(`📤 ESP32: Stopped cycle for machine ${slot.machine.machineId}`);
+        } catch (error) {
+          console.error(`❌ ESP32: Failed to stop cycle for machine ${slot.machine.machineId}:`, error);
+        }
 
         // Update slot status to Completed
         await prisma.slot.update({
@@ -1312,6 +1327,40 @@ app.post("/api/cancel-slot", isAuthenticated as any, asyncHandler(async (req: Au
   } catch (error) {
     console.error("❌ Error cancelling slot:", error);
     res.status(500).json({ message: "Internal server error" });
+  }
+}));
+
+// ESP32 Test Endpoint - Test MQTT communication
+app.get("/api/esp32/test", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const { action, machineId } = req.query;
+    const testMachineId = (machineId as string) || "washer1";
+
+    console.log(`🧪 ESP32 Test: ${action} for machine ${testMachineId}`);
+
+    if (action === "start") {
+      await startCycle(testMachineId);
+      res.json({ success: true, message: `Start command sent to ${testMachineId}` });
+    } else if (action === "stop") {
+      await stopCycle(testMachineId);
+      res.json({ success: true, message: `Stop command sent to ${testMachineId}` });
+    } else if (action === "display") {
+      await updateDisplay(testMachineId, {
+        line1: "Test Mode",
+        line2: "ESP32 Working",
+        line3: "From Backend"
+      });
+      res.json({ success: true, message: `Display update sent to ${testMachineId}` });
+    } else {
+      res.json({
+        success: true,
+        message: "ESP32 Test Endpoint",
+        usage: "?action=start|stop|display&machineId=washer1"
+      });
+    }
+  } catch (error) {
+    console.error("❌ ESP32 Test Error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 }));
 

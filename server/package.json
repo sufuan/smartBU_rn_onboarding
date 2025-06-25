@@ -17,6 +17,7 @@
   "license": "ISC",
   "dependencies": {
     "@prisma/client": "^6.8.2",
+    "@types/mqtt": "^0.0.34",
     "@types/qrcode": "^1.5.5",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",

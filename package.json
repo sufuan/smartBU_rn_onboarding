@@ -80,5 +80,19 @@
         "listUnknownPackages": false
       }
     }
+  },
+  "eas": {
+    "build": {
+      "development": {
+        "buildHooks": {
+          "preInstall": "echo $GOOGLE_SERVICES_BASE64 | base64 --decode > android/app/google-services.json"
+        }
+      },
+      "production": {
+        "buildHooks": {
+          "preInstall": "echo $GOOGLE_SERVICES_BASE64 | base64 --decode > android/app/google-services.json"
+        }
+      }
+    }
   }
 }
