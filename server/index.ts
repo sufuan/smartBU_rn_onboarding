@@ -834,11 +834,34 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
       });
     }
 
-    // Find the slot with matching details
+    // First, find the machine to get its ObjectId
+    let machine;
+    if (machineId.length === 24 && /^[0-9a-fA-F]{24}$/.test(machineId)) {
+      // It's already an ObjectId
+      machine = await prisma.machine.findUnique({
+        where: { id: machineId }
+      });
+    } else {
+      // It's a machineId like "WASHER-001", find by machineId field
+      machine = await prisma.machine.findUnique({
+        where: { machineId: machineId }
+      });
+    }
+
+    if (!machine) {
+      console.log(`❌ Machine not found: ${machineId}`);
+      return res.status(404).json({
+        error: "Machine not found"
+      });
+    }
+
+    console.log(`✅ Machine found: ${machine.machineId} (ObjectId: ${machine.id})`);
+
+    // Find the slot with matching details using the machine's ObjectId
     const slot = await prisma.slot.findFirst({
       where: {
         userId,
-        machineId,
+        machineId: machine.id, // Use the machine's ObjectId
         slotTime: slotTimeDate,
         authCode,
         status: 'Reserved'

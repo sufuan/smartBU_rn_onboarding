@@ -1,5 +1,5 @@
-import mqtt, { MqttClient } from 'mqtt';
 import dotenv from 'dotenv';
+import mqtt, { MqttClient } from 'mqtt';
 
 // Load environment variables
 dotenv.config();
@@ -42,7 +42,9 @@ class ESP32Manager {
         connectTimeout: this.config.connectTimeout,
         clientId: `washing-machine-server-${Date.now()}`,
         clean: true,
-        keepalive: 60,
+        keepalive: 15,  // Faster keep-alive (15 seconds instead of 60)
+        queueQoSZero: false,  // Don't queue QoS 0 messages
+        reschedulePings: true,  // Reschedule pings on send
       });
 
       this.setupEventHandlers();
@@ -117,7 +119,7 @@ class ESP32Manager {
           console.error(`❌ ESP32Manager: Failed to publish to ${topic}:`, error);
           reject(error);
         } else {
-          console.log(`📤 ESP32Manager: Published to ${topic}: ${message}`);
+          console.log(`📤 ESP32Manager: Published to ${topic}: ${message} (QoS 1)`);
           resolve();
         }
       });
