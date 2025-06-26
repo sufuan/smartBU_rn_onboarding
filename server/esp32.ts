@@ -77,6 +77,12 @@ class ESP32Manager {
     this.client.on('reconnect', () => {
       this.reconnectAttempts++;
       console.log(`🔄 ESP32Manager: Reconnecting to MQTT broker (attempt ${this.reconnectAttempts})`);
+
+      // Circuit breaker: Stop if too many attempts
+      if (this.reconnectAttempts > this.maxReconnectAttempts) {
+        console.error(`🛑 ESP32Manager: Circuit breaker activated - stopping reconnection after ${this.reconnectAttempts} attempts`);
+        this.client.end(true);
+      }
     });
 
     this.client.on('offline', () => {
@@ -87,12 +93,13 @@ class ESP32Manager {
 
   private handleConnectionError(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error(`❌ ESP32Manager: Max reconnection attempts (${this.maxReconnectAttempts}) reached`);
+      console.error(`❌ ESP32Manager: Max reconnection attempts (${this.maxReconnectAttempts}) reached - stopping reconnection`);
+      this.client.end(true); // Force close the client
       return;
     }
 
     setTimeout(() => {
-      if (!this.isConnected && !this.config.mockMode) {
+      if (!this.isConnected && !this.config.mockMode && this.reconnectAttempts < this.maxReconnectAttempts) {
         console.log('🔄 ESP32Manager: Attempting to reconnect...');
         this.initializeMQTT();
       }

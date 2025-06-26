@@ -1,18 +1,18 @@
 /*
  * ESP32 Washing Machine Controller
- * 
+ *
  * This sketch controls a washing machine relay via MQTT commands.
  * It connects to WiFi and subscribes to MQTT topics for control commands.
- * 
+ *
  * Hardware:
  * - ESP32 Development Board
  * - Relay Module connected to GPIO 4 (Active LOW)
  * - LED for testing (optional, same pin as relay)
- * 
+ *
  * MQTT Topics:
- * - washer/washer1/control (subscribe) - receives 'start' or 'stop' commands
- * - washer/washer1/status (publish) - sends status updates
- * 
+ * - washer/WASHER-001/control (subscribe) - receives 'start' or 'stop' commands
+ * - washer/WASHER-001/status (publish) - sends status updates
+ *
  * Wiring:
  * - GPIO 4 -> Relay IN (Active LOW: LOW=ON, HIGH=OFF)
  * - VCC -> 3.3V or 5V (depending on relay module)
@@ -21,6 +21,7 @@
 
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include <time.h>
 
 // WiFi Configuration
 const char* ssid = "TP";
@@ -60,7 +61,12 @@ bool cycleRunning = false;
 bool hasSlotEndTime = false;    // Whether we received a slot end time
 unsigned long lastStatusUpdate = 0;
 unsigned long lastMqttPing = 0;
-const unsigned long STATUS_UPDATE_INTERVAL = 10000;  // Send status every 10 seconds (faster updates)
+const unsigned long STATUS_UPDATE_INTERVAL = 10000;  // Send status every 10 seconds
+
+// NTP Time configuration
+const char* ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = 0;     // GMT offset in seconds (0 for UTC)
+const int daylightOffset_sec = 0; // Daylight offset in seconds
 
 void setup() {
   // Initialize Serial Communication
@@ -84,13 +90,17 @@ void setup() {
   
   // Connect to WiFi
   setupWiFi();
-  
+
+  // Initialize time
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  Serial.println("⏰ Time synchronization started");
+
   // Setup MQTT with optimized settings
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(mqttCallback);
   client.setKeepAlive(15);        // Faster keep-alive (15 seconds)
   client.setSocketTimeout(5);     // Faster socket timeout (5 seconds)
-  
+
   Serial.println("Setup completed successfully!");
   Serial.println("Waiting for MQTT commands...");
 }
@@ -119,8 +129,9 @@ void loop() {
 
     // Check slot expiration first (if we have slot end time)
     if (hasSlotEndTime) {
-      unsigned long currentUnixTime = WiFi.getTime(); // Get current Unix timestamp
-      if (currentUnixTime > 0 && currentUnixTime >= slotEndTime) {
+      time_t now;
+      time(&now);
+      if (now > 0 && (unsigned long)now >= slotEndTime) {
         shouldStop = true;
         stopReason = "Slot expired";
       }
@@ -345,9 +356,10 @@ void startCycle() {
   Serial.printf("   Max Duration: %d minutes\n", CYCLE_DURATION / 60000);
 
   if (hasSlotEndTime) {
-    unsigned long currentTime = WiFi.getTime();
-    if (currentTime > 0) {
-      unsigned long remainingSeconds = (slotEndTime > currentTime) ? (slotEndTime - currentTime) : 0;
+    time_t now;
+    time(&now);
+    if (now > 0) {
+      unsigned long remainingSeconds = (slotEndTime > (unsigned long)now) ? (slotEndTime - (unsigned long)now) : 0;
       Serial.printf("   Slot expires in: %lu minutes %lu seconds\n",
                     remainingSeconds / 60, remainingSeconds % 60);
     }
