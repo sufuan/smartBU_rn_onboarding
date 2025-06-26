@@ -55,7 +55,9 @@ const unsigned long MQTT_PING_INTERVAL = 10000;       // 10 seconds between MQTT
 WiFiClient espClient;
 PubSubClient client(espClient);
 unsigned long cycleStartTime = 0;
+unsigned long slotEndTime = 0;  // When the slot expires (Unix timestamp in seconds)
 bool cycleRunning = false;
+bool hasSlotEndTime = false;    // Whether we received a slot end time
 unsigned long lastStatusUpdate = 0;
 unsigned long lastMqttPing = 0;
 const unsigned long STATUS_UPDATE_INTERVAL = 10000;  // Send status every 10 seconds (faster updates)
@@ -110,10 +112,30 @@ void loop() {
     lastMqttPing = millis();
   }
 
-  // Check if cycle should be stopped (30-minute timeout)
-  if (cycleRunning && (millis() - cycleStartTime >= CYCLE_DURATION)) {
-    Serial.println("⏰ Cycle timeout reached (30 minutes) - Stopping cycle");
-    stopCycle();
+  // Check if cycle should be stopped (slot expiration or 30-minute timeout)
+  if (cycleRunning) {
+    bool shouldStop = false;
+    String stopReason = "";
+
+    // Check slot expiration first (if we have slot end time)
+    if (hasSlotEndTime) {
+      unsigned long currentUnixTime = WiFi.getTime(); // Get current Unix timestamp
+      if (currentUnixTime > 0 && currentUnixTime >= slotEndTime) {
+        shouldStop = true;
+        stopReason = "Slot expired";
+      }
+    }
+
+    // Check 30-minute timeout as fallback
+    if (!shouldStop && (millis() - cycleStartTime >= CYCLE_DURATION)) {
+      shouldStop = true;
+      stopReason = "30-minute timeout";
+    }
+
+    if (shouldStop) {
+      Serial.printf("⏰ %s - Stopping cycle\n", stopReason.c_str());
+      stopCycle();
+    }
   }
 
   // Send periodic status updates
@@ -209,14 +231,44 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   for (int i = 0; i < length; i++) {
     message += (char)payload[i];
   }
-  
+
   Serial.printf("📨 MQTT message received:\n");
   Serial.printf("   Topic: %s\n", topic);
   Serial.printf("   Message: %s\n", message.c_str());
-  
+
   // Handle control commands
   if (String(topic) == control_topic) {
-    if (message == "start") {
+    // Check if it's a JSON command (starts with '{')
+    if (message.startsWith("{")) {
+      // Parse JSON command
+      if (message.indexOf("\"action\":\"start\"") > 0) {
+        // Extract slot end time if present
+        int slotEndIndex = message.indexOf("\"slotEndTime\":\"");
+        if (slotEndIndex > 0) {
+          int startQuote = slotEndIndex + 15; // Length of "slotEndTime":"
+          int endQuote = message.indexOf("\"", startQuote);
+          if (endQuote > startQuote) {
+            String slotEndTimeStr = message.substring(startQuote, endQuote);
+            Serial.printf("🕐 Slot end time received: %s\n", slotEndTimeStr.c_str());
+
+            // Convert ISO string to Unix timestamp (simplified)
+            // Note: This is a basic implementation. For production, use a proper JSON parser
+            slotEndTime = parseISOToUnix(slotEndTimeStr);
+            hasSlotEndTime = (slotEndTime > 0);
+
+            if (hasSlotEndTime) {
+              Serial.printf("✅ Slot end time set: %lu (Unix timestamp)\n", slotEndTime);
+            }
+          }
+        }
+        startCycle();
+      } else if (message.indexOf("\"action\":\"stop\"") > 0) {
+        stopCycle();
+      }
+    }
+    // Handle simple string commands (backward compatibility)
+    else if (message == "start") {
+      hasSlotEndTime = false; // No slot end time provided
       startCycle();
     } else if (message == "stop") {
       stopCycle();
@@ -224,12 +276,52 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       Serial.printf("   ⚠️ Unknown command: %s\n", message.c_str());
     }
   }
-  
+
   // Handle display commands (optional - for future LCD/OLED integration)
   else if (String(topic) == display_topic) {
     Serial.printf("📺 Display update: %s\n", message.c_str());
     // TODO: Parse JSON and update display if LCD/OLED is connected
   }
+}
+
+// Simple ISO 8601 to Unix timestamp converter
+// Format: "2025-06-25T20:30:00.000Z"
+unsigned long parseISOToUnix(String isoString) {
+  // This is a simplified parser. For production, use a proper library
+  // Extract year, month, day, hour, minute, second
+  if (isoString.length() < 19) return 0;
+
+  int year = isoString.substring(0, 4).toInt();
+  int month = isoString.substring(5, 7).toInt();
+  int day = isoString.substring(8, 10).toInt();
+  int hour = isoString.substring(11, 13).toInt();
+  int minute = isoString.substring(14, 16).toInt();
+  int second = isoString.substring(17, 19).toInt();
+
+  // Simple Unix timestamp calculation (approximate)
+  // This is basic - for production use a proper time library
+  unsigned long timestamp = 0;
+
+  // Years since 1970
+  for (int y = 1970; y < year; y++) {
+    timestamp += (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)) ? 366 : 365;
+  }
+
+  // Days in months for current year
+  int daysInMonth[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  if (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)) {
+    daysInMonth[1] = 29; // Leap year
+  }
+
+  for (int m = 1; m < month; m++) {
+    timestamp += daysInMonth[m - 1];
+  }
+
+  timestamp += (day - 1); // Days
+  timestamp = timestamp * 24 * 60 * 60; // Convert to seconds
+  timestamp += hour * 3600 + minute * 60 + second; // Add time
+
+  return timestamp;
 }
 
 void startCycle() {
@@ -250,7 +342,20 @@ void startCycle() {
 
   Serial.println("✅ Washing cycle started!");
   Serial.printf("   Relay: ON (GPIO %d = LOW)\n", RELAY_PIN);
-  Serial.printf("   Duration: %d minutes\n", CYCLE_DURATION / 60000);
+  Serial.printf("   Max Duration: %d minutes\n", CYCLE_DURATION / 60000);
+
+  if (hasSlotEndTime) {
+    unsigned long currentTime = WiFi.getTime();
+    if (currentTime > 0) {
+      unsigned long remainingSeconds = (slotEndTime > currentTime) ? (slotEndTime - currentTime) : 0;
+      Serial.printf("   Slot expires in: %lu minutes %lu seconds\n",
+                    remainingSeconds / 60, remainingSeconds % 60);
+    }
+    Serial.printf("   Slot end time: %lu (Unix timestamp)\n", slotEndTime);
+  } else {
+    Serial.println("   Using 30-minute default timeout");
+  }
+
   Serial.printf("🔍 Debug: cycleRunning=%s, cycleStartTime=%lu\n",
                 cycleRunning ? "true" : "false", cycleStartTime);
   
@@ -284,6 +389,8 @@ void stopCycle() {
   // Calculate cycle duration
   unsigned long cycleDuration = millis() - cycleStartTime;
   cycleRunning = false;
+  hasSlotEndTime = false;  // Reset slot end time
+  slotEndTime = 0;
   
   Serial.println("✅ Washing cycle stopped!");
   Serial.printf("   Relay: OFF (GPIO %d = HIGH)\n", RELAY_PIN);

@@ -127,14 +127,28 @@ class ESP32Manager {
   }
 
   /**
-   * Start washing cycle for a specific machine
-   * @param machineId - The ID of the washing machine (e.g., 'washer1')
+   * Start washing cycle for a specific machine with slot expiration time
+   * @param machineId - The ID of the washing machine (e.g., 'WASHER-001')
+   * @param slotEndTime - Optional slot end time for automatic cutoff
    */
-  public async startCycle(machineId: string): Promise<void> {
+  public async startCycle(machineId: string, slotEndTime?: Date): Promise<void> {
     try {
       const topic = `washer/${machineId}/control`;
-      await this.publishMessage(topic, 'start');
-      console.log(`🚀 ESP32Manager: Started cycle for machine ${machineId}`);
+
+      if (slotEndTime) {
+        // Send start command with slot end time
+        const startCommand = {
+          action: 'start',
+          slotEndTime: slotEndTime.toISOString(),
+          maxDuration: 30 * 60 // 30 minutes in seconds as fallback
+        };
+        await this.publishMessage(topic, JSON.stringify(startCommand));
+        console.log(`🚀 ESP32Manager: Started cycle for machine ${machineId} until ${slotEndTime.toISOString()}`);
+      } else {
+        // Fallback to simple start command
+        await this.publishMessage(topic, 'start');
+        console.log(`🚀 ESP32Manager: Started cycle for machine ${machineId} (30min default)`);
+      }
     } catch (error) {
       console.error(`❌ ESP32Manager: Failed to start cycle for machine ${machineId}:`, error);
       throw error;

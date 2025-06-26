@@ -959,10 +959,10 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
       actualCycleDurationMinutes: Math.floor(actualCycleDuration / 60)
     });
 
-    // Send MQTT message to ESP32 relay to start the cycle
+    // Send MQTT message to ESP32 relay to start the cycle with slot end time
     try {
-      await startCycle(slot.machine.machineId);
-      console.log(`📤 ESP32: Started cycle for machine ${slot.machine.machineId}`);
+      await startCycle(slot.machine.machineId, slotEndTime);
+      console.log(`📤 ESP32: Started cycle for machine ${slot.machine.machineId} until ${slotEndTime.toISOString()}`);
     } catch (error) {
       console.error(`❌ ESP32: Failed to start cycle for machine ${slot.machine.machineId}:`, error);
       // Continue execution even if MQTT fails (for offline scenarios)
