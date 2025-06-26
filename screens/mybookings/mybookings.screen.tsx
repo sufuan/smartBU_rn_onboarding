@@ -8,13 +8,14 @@ import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Alert,
+    FlatList,
+    Pressable,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
@@ -462,6 +463,20 @@ export default function MyBookingsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.dark ? "#131313" : "#f8f9fa" }]}>
+      {/* Header with Back Button */}
+      <View style={[styles.header, { backgroundColor: theme.dark ? "#131313" : "#f8f9fa" }]}>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backButton}
+        >
+          <Ionicons name="arrow-back" size={24} color={theme.dark ? "#fff" : "#000"} />
+        </Pressable>
+        <Text style={[styles.headerTitle, { color: theme.dark ? "#fff" : "#000" }]}>
+          My Bookings
+        </Text>
+        <View style={{ width: 24 }} />
+      </View>
+
       {renderCustomTabHeader()}
       <FlatList
         data={getCurrentTabData()}
@@ -491,6 +506,23 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: 0,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(15),
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.1)",
+  },
+  backButton: {
+    padding: scale(8),
+    borderRadius: scale(8),
+  },
+  headerTitle: {
+    fontSize: fontSizes.FONT20,
+    fontWeight: "bold",
   },
   loadingContainer: {
     flex: 1,

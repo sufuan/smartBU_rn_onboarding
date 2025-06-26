@@ -64,6 +64,8 @@ export default function ControlScreen() {
   const [scannedMachineId, setScannedMachineId] = useState<string | null>(null);
   const [countdownToSlot, setCountdownToSlot] = useState<number | null>(null);
   const [activeTimeRemaining, setActiveTimeRemaining] = useState<number | null>(null);
+  // Add a state for live display timer
+  const [displayCycleTimer, setDisplayCycleTimer] = useState<number | null>(null);
 
   // Camera permissions
   const [permission, requestPermission] = useCameraPermissions();
@@ -133,8 +135,8 @@ export default function ControlScreen() {
         setTimeRemaining(null);
       }
 
-      // If cycle is running and we have backend time remaining, use it
-      if (backendCycleStarted && !backendCycleCompleted && backendTimeRemaining !== null) {
+      // Initialize timer from backend if we don't have local timer running
+      if (backendCycleStarted && !backendCycleCompleted && backendTimeRemaining !== null && timeRemaining === null) {
         setTimeRemaining(backendTimeRemaining);
       }
     }
@@ -258,22 +260,20 @@ export default function ControlScreen() {
         const slotEndTime = new Date(slotTime.getTime() + 30 * 60 * 1000);
         const elapsedMs = now.getTime() - cycleStartTime.getTime();
         const elapsedSeconds = Math.floor(elapsedMs / 1000);
-
-        // Calculate remaining time considering both cycle duration and slot expiration
         const timeUntilSlotExpires = Math.max(0, Math.floor((slotEndTime.getTime() - now.getTime()) / 1000));
         const maxCycleSeconds = 30 * 60; // 30 minutes
         const cycleTimeRemaining = Math.max(0, maxCycleSeconds - elapsedSeconds);
-
-        // Use the minimum of cycle time remaining and time until slot expires
         const remainingSeconds = Math.min(cycleTimeRemaining, timeUntilSlotExpires);
 
         setTimeRemaining(remainingSeconds);
+        setDisplayCycleTimer(remainingSeconds);
 
         // Check if cycle is complete
         if (remainingSeconds <= 0) {
           setCycleStarted(false);
           setCycleStartTime(null);
           setTimeRemaining(null);
+          setDisplayCycleTimer(null);
           Alert.alert("Cycle Finished", "Your washing cycle is complete!");
           router.push("/(tabs)/mybookings" as any);
         }
@@ -284,6 +284,18 @@ export default function ControlScreen() {
 
       // Set up interval to update every second
       timerRef.current = setInterval(updateCycleTimer, 1000);
+    } else if (backendCycleStarted && backendTimeRemaining !== null) {
+      setDisplayCycleTimer(backendTimeRemaining);
+      timerRef.current = setInterval(() => {
+        setDisplayCycleTimer(prev => {
+          if (prev === null) return null;
+          if (prev <= 1) {
+            clearInterval(timerRef.current!);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
     } else {
       // Clear timer if cycle not started
       if (timerRef.current) {
@@ -291,6 +303,7 @@ export default function ControlScreen() {
         timerRef.current = null;
       }
       setTimeRemaining(null);
+      setDisplayCycleTimer(null);
     }
 
     return () => {
@@ -299,7 +312,7 @@ export default function ControlScreen() {
         timerRef.current = null;
       }
     };
-  }, [cycleStarted, cycleStartTime]);
+  }, [cycleStarted, cycleStartTime, backendCycleStarted, backendTimeRemaining, slotTime]);
 
   const handleStartCycle = async () => {
     if (!userId || !machineId || !authCode) {
@@ -608,11 +621,14 @@ export default function ControlScreen() {
         </View>
 
         {/* Cycle Timer */}
-        {(cycleStarted || backendCycleStarted) && (timeRemaining !== null || backendTimeRemaining !== null) && (
+        {(cycleStarted || backendCycleStarted) && (displayCycleTimer !== null) && (
           <View style={styles.timerContainer}>
             <Text style={[styles.timerLabel, { color: "#fff" }]}>Cycle Time Remaining</Text>
             <Text style={[styles.timerText, { color: "#fff" }]}>
-              {formatTimer(backendTimeRemaining !== null ? backendTimeRemaining : (timeRemaining || 0))}
+              {formatTimer(displayCycleTimer)}
+            </Text>
+            <Text style={[styles.timerSubtext, { color: "#ccc" }]}>
+              Live countdown • Updates every second
             </Text>
           </View>
         )}
@@ -1025,6 +1041,12 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#fff",
     fontFamily: "monospace",
+  },
+  timerSubtext: {
+    fontSize: 12,
+    textAlign: "center",
+    marginTop: 4,
+    opacity: 0.7,
   },
 
   // Scanner Modal Styles
