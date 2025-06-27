@@ -89,11 +89,9 @@ export default function _layout() {
           },
           tabBarActiveTintColor: "#4A90E2",
           tabBarInactiveTintColor: theme.dark ? "#666" : "#8e8e93",
-          headerShown: route.name === "mybookings/index" || route.name === "resources/index",
+          headerShown: route.name === "resources/index",
           headerTitle:
-            route.name === "mybookings/index"
-              ? "My Bookings"
-              : route.name === "resources/index"
+            route.name === "resources/index"
               ? "Video Lessons"
               : "",
           headerTitleStyle: {
