@@ -1,4 +1,6 @@
+import { LoadingIndicator } from "@/components/common/LoadingIndicator";
 import { useTheme } from "@/context/theme.context";
+import { useMachineData } from "@/hooks/queries/useMachineData";
 import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import {
   fontSizes,
@@ -9,6 +11,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Modal,
   Pressable,
@@ -36,8 +39,8 @@ export default function ControlScreen() {
   const slotTime = params.slotTime ? new Date(params.slotTime as string) : new Date();
   const initialAuthCode = (params.authCode as string) || "";
 
-  // State to store the actual machine data
-  const [machineData, setMachineData] = useState<any>(null);
+  // Use the new TanStack Query hook to fetch machine data
+  const { data: machineData, isLoading: isMachineDataLoading } = useMachineData(machineId);
 
   // State to store the slot ID (we'll get this from finding the slot)
   const [slotId, setSlotId] = useState<string | null>(null);
@@ -67,24 +70,25 @@ export default function ControlScreen() {
   // Add a state for live display timer
   const [displayCycleTimer, setDisplayCycleTimer] = useState<number | null>(null);
 
+  // Derived state to determine if the cycle is active from either local or backend state
+  const isCycleConsideredActive = (cycleStarted || backendCycleStarted) && !backendCycleCompleted;
+
   // Camera permissions
   const [permission, requestPermission] = useCameraPermissions();
 
+  // If backend says cycle is running, ensure the scanned state is also set
+  useEffect(() => {
+    if (isCycleConsideredActive && machineData?.machineId) {
+      setScannedMachineId(machineData.machineId);
+    }
+  }, [isCycleConsideredActive, machineData]);
+
   // Fetch machine data and find slot ID
   useEffect(() => {
-    const fetchMachineDataAndSlot = async () => {
+    const findSlot = async () => {
       if (!machineId || !userId) return;
 
       try {
-        // Fetch machine data
-        const machineResponse = await axios.get(
-          `${process.env.EXPO_PUBLIC_SERVER_URI}/api/machines/${machineId}`
-        );
-
-        if (machineResponse.data.success) {
-          setMachineData(machineResponse.data.machine);
-        }
-
         // Find the slot ID by matching user, machine, slot time, and auth code
         const slotsResponse = await axios.get(
           `${process.env.EXPO_PUBLIC_SERVER_URI}/api/user-slots?userId=${userId}`
@@ -102,13 +106,12 @@ export default function ControlScreen() {
           }
         }
       } catch (error: any) {
-        console.error('❌ Error fetching machine data or slot:', error);
-        console.error('❌ Failed machine ID:', machineId);
+        console.error('❌ Error fetching slot:', error);
         console.error('❌ Error details:', error.response?.data || error.message);
       }
     };
 
-    fetchMachineDataAndSlot();
+    findSlot();
   }, [machineId, userId, initialAuthCode, slotTime]);
 
   // Sync frontend state with backend cycle status
@@ -427,6 +430,12 @@ export default function ControlScreen() {
 
   // QR Code scanning functions
   const handleScanQRCode = async () => {
+    // Prevent scanning while cycle status is loading to avoid race conditions
+    if (cycleStatusLoading) {
+      console.log('🚫 Scan action blocked: Cycle status is currently loading.');
+      return;
+    }
+
     if (!isSlotTimeValid()) {
       Alert.alert("Error", "Slot time not active");
       return;
@@ -505,7 +514,7 @@ export default function ControlScreen() {
         }
 
         if (scannedMachineIdValue !== machineData.machineId) {
-          Alert.alert("Error", `Wrong machine scanned.\nExpected: ${machineData.machineId}\nScanned: ${scannedMachineIdValue}`, [
+          Alert.alert("Error", `Wrong machine scanned.`, [
             {
               text: "OK",
               onPress: () => {
@@ -545,6 +554,10 @@ export default function ControlScreen() {
       router.push("/(routes)/laundry");
     }
   };
+
+  if (isMachineDataLoading) {
+    return <LoadingIndicator text="Loading machine details..." fullscreen />;
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.dark ? "#131313" : "#fff" }]}>
@@ -620,15 +633,24 @@ export default function ControlScreen() {
           })()}
         </View>
 
-        {/* Cycle Timer */}
-        {(cycleStarted || backendCycleStarted) && (displayCycleTimer !== null) && (
+        {/* Cycle Timer: Shows only when cycle is confirmed to be active */}
+        {isCycleConsideredActive && (
           <View style={styles.timerContainer}>
             <Text style={[styles.timerLabel, { color: "#fff" }]}>Cycle Time Remaining</Text>
-            <Text style={[styles.timerText, { color: "#fff" }]}>
-              {formatTimer(displayCycleTimer)}
-            </Text>
+            {cycleStatusLoading && displayCycleTimer === null ? (
+              <View style={styles.timerLoadingContainer}>
+                <ActivityIndicator color="#fff" size="large" />
+                <Text style={[styles.timerText, { fontSize: 24, marginLeft: 15, color: "#fff" }]}>Syncing...</Text>
+              </View>
+            ) : (
+              <Text style={[styles.timerText, { color: "#fff" }]}>
+                {formatTimer(displayCycleTimer ?? backendTimeRemaining ?? 0)}
+              </Text>
+            )}
             <Text style={[styles.timerSubtext, { color: "#ccc" }]}>
-              Live countdown • Updates every second
+              {cycleStatusLoading && displayCycleTimer === null
+                ? "Checking for latest cycle status..."
+                : "Live countdown • Updates every second"}
             </Text>
           </View>
         )}
@@ -740,42 +762,41 @@ export default function ControlScreen() {
             </Text>
           </View>
 
-          <Pressable
-            style={[
-              styles.button,
-              styles.scanButton,
-              { opacity: !isSlotTimeValid() || !!scannedMachineId || cycleStarted ? 0.5 : 1 }
-            ]}
-            onPress={handleScanQRCode}
-            disabled={!isSlotTimeValid() || !!scannedMachineId || cycleStarted || backendCycleStarted || cycleStatusLoading}
-          >
-            <Ionicons name="qr-code" size={20} color="#fff" />
-            <Text style={styles.buttonText}>
-              {cycleStatusLoading
-                ? 'Loading...'
-                : !isSlotTimeValid()
-                ? 'Scanner Not Available'
-                : scannedMachineId
-                  ? 'Already Scanned'
-                  : cycleStarted
-                    ? 'Cycle Running'
-                    : 'Scan QR Code'
-              }
-            </Text>
-          </Pressable>
+          {/* Scan Button: Hidden if cycle is active or loading, disabled if already scanned */}
+          {!isCycleConsideredActive && isSlotTimeValid() && (
+            <Pressable
+              style={[
+                styles.button,
+                styles.scanButton,
+                { opacity: (!!scannedMachineId || cycleStatusLoading) ? 0.5 : 1 },
+              ]}
+              onPress={handleScanQRCode}
+              disabled={!!scannedMachineId || cycleStatusLoading}
+            >
+              <Ionicons name="qr-code" size={20} color="#fff" />
+              <Text style={styles.buttonText}>
+                {cycleStatusLoading
+                  ? "Loading..."
+                  : scannedMachineId
+                  ? "Machine Scanned"
+                  : "Scan QR Code"}
+              </Text>
+            </Pressable>
+          )}
 
+          {/* Start Button: Disabled until machine is scanned and auth code is entered */}
           <Pressable
             style={[
               styles.button,
               styles.startButton,
-              { opacity: isLoading || !authCode || !scannedMachineId || !isSlotTimeValid() || cycleStarted ? 0.5 : 1 }
+              { opacity: isLoading || !authCode || !scannedMachineId || !isSlotTimeValid() || isCycleConsideredActive ? 0.5 : 1 },
             ]}
             onPress={handleStartCycle}
-            disabled={isLoading || !authCode || !scannedMachineId || !isSlotTimeValid() || cycleStarted || backendCycleStarted}
+            disabled={isLoading || !authCode || !scannedMachineId || !isSlotTimeValid() || isCycleConsideredActive}
           >
             {isLoading ? (
               <Text style={styles.buttonText}>Starting...</Text>
-            ) : (cycleStarted || backendCycleStarted) ? (
+            ) : isCycleConsideredActive ? (
               <>
                 <Ionicons name="checkmark-circle" size={20} color="#fff" />
                 <Text style={styles.buttonText}>Cycle Running</Text>
@@ -1041,6 +1062,12 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#fff",
     fontFamily: "monospace",
+  },
+  timerLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 10,
   },
   timerSubtext: {
     fontSize: 12,
