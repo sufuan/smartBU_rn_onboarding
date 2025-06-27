@@ -27,7 +27,8 @@ export default function NoPackageScreen() {
   };
 
   const handleGoBack = () => {
-    router.back();
+    // Always navigate to Home screen instead of trying to go back
+    router.replace("/");
   };
 
   return (

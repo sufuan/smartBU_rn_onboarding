@@ -57,14 +57,8 @@ export default function LaundryScreen() {
 
   // Check subscription when component mounts (simplified with TanStack Query)
   useEffect(() => {
-    if (!userLoading && !hasSubscription) {
-      console.log('❌ LaundryScreen: No subscription, redirecting to no-package');
-      router.replace({
-        pathname: "/(routes)/no-package" as any,
-        params: { serviceName: "Your Laundry" }
-      });
-    } else if (!userLoading && hasSubscription) {
-      console.log('✅ LaundryScreen: Subscription confirmed, staying on page');
+    if (!userLoading) {
+      console.log('✅ LaundryScreen: User loading complete, subscription status:', hasSubscription);
       setCheckingSubscription(false);
     }
   }, [userLoading, hasSubscription]); // Depend on TanStack Query states
@@ -401,6 +395,42 @@ export default function LaundryScreen() {
           <Text style={[styles.loadingText, { color: theme.dark ? "#ccc" : "#666" }]}>
             {userLoading ? "Loading user data..." : "Checking subscription..."}
           </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show subscription required message if user doesn't have subscription
+  if (!hasSubscription) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.dark ? "#131313" : "#fff" }]}>
+        <StatusBar barStyle={theme.dark ? "light-content" : "dark-content"} />
+
+        {/* Header with back button */}
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={theme.dark ? "#fff" : "#000"} />
+          </Pressable>
+          <Text style={{ color: theme.dark ? "#fff" : "#000", fontSize: 18, fontWeight: '600' }}>
+            Laundry Service
+          </Text>
+          <View style={{ width: 24 }} />
+        </View>
+
+        <View style={styles.loadingContainer}>
+          <Ionicons name="lock-closed" size={64} color="#FF6B6B" />
+          <Text style={[styles.loadingText, { color: theme.dark ? "#fff" : "#000", fontSize: 20, fontWeight: 'bold' }]}>
+            Subscription Required
+          </Text>
+          <Text style={[styles.loadingText, { color: theme.dark ? "#ccc" : "#666", fontSize: 16, textAlign: 'center', marginTop: 10 }]}>
+            You need an active subscription to access the laundry service.
+          </Text>
+          <Pressable
+            style={[styles.bookButton, { backgroundColor: '#4A90E2', marginTop: 20 }]}
+            onPress={() => router.push("/(routes)/no-package" as any)}
+          >
+            <Text style={[styles.bookButtonText, { color: '#fff' }]}>View Packages</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     );
