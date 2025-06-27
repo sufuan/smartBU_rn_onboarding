@@ -3,13 +3,14 @@ import { useUserSlotsQuery } from "@/hooks/queries/useMachineQueries";
 import { useSubscriptionStatus, useUserQuery } from "@/hooks/queries/useUserQuery";
 import { apiService } from "@/lib/api";
 import { fontSizes } from "@/themes/app.constant";
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { AntDesign, Feather, Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
   FlatList,
+  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -461,7 +462,26 @@ export default function MyBookingsScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.dark ? "#131313" : "#f8f9fa" }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.dark ? "#131313" : "#f8f9fa" }]}>
+      {/* Enhanced Header with Back Button */}
+      <View style={[styles.header, { backgroundColor: theme.dark ? "#131313" : "#f8f9fa" }]}>
+        <Pressable
+          onPress={() => router.back()}
+          style={[styles.backButton, { backgroundColor: theme.dark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)" }]}
+        >
+          <AntDesign name="left" size={scale(22)} color={theme.dark ? "#fff" : "#000"} />
+        </Pressable>
+        <View style={styles.headerTitleContainer}>
+          <Text style={[styles.headerTitle, { color: theme.dark ? "#fff" : "#000" }]}>
+            My Bookings
+          </Text>
+          <Text style={[styles.headerSubtitle, { color: theme.dark ? "#ccc" : "#666" }]}>
+            Manage your washing slots
+          </Text>
+        </View>
+        <View style={{ width: scale(40) }} />
+      </View>
+
       {renderCustomTabHeader()}
       <FlatList
         data={getCurrentTabData()}
@@ -483,14 +503,43 @@ export default function MyBookingsScreen() {
         }
         ListEmptyComponent={renderEmptyState}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 0,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(15),
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.1)",
+  },
+  headerTitleContainer: {
+    alignItems: "center",
+    flex: 1,
+  },
+  backButton: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    backgroundColor: "rgba(0, 0, 0, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    fontSize: fontSizes.FONT20,
+    fontWeight: "bold",
+  },
+  headerSubtitle: {
+    fontSize: fontSizes.FONT12,
+    marginTop: verticalScale(2),
+    opacity: 0.8,
   },
   loadingContainer: {
     flex: 1,
@@ -506,15 +555,15 @@ const styles = StyleSheet.create({
     paddingBottom: verticalScale(100), // Extra padding for tab bar
   },
   slotCard: {
-    borderRadius: scale(12),
-    padding: scale(16),
-    marginBottom: verticalScale(12),
-    borderLeftWidth: scale(4),
+    borderRadius: scale(16),
+    padding: scale(20),
+    marginBottom: verticalScale(16),
+    borderLeftWidth: scale(5),
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
   },
   slotHeader: {
     flexDirection: "row",
@@ -600,18 +649,23 @@ const styles = StyleSheet.create({
   customTabHeader: {
     flexDirection: "row",
     paddingHorizontal: scale(20),
-    paddingTop: 0,
-    paddingBottom: verticalScale(4),
+    paddingTop: verticalScale(8),
+    paddingBottom: verticalScale(8),
     borderBottomWidth: 1,
     borderBottomColor: "#e0e0e0",
   },
   customTab: {
     flex: 1,
-    paddingVertical: verticalScale(6),
-    paddingHorizontal: scale(12),
-    borderRadius: scale(8),
-    marginHorizontal: scale(4),
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(16),
+    borderRadius: scale(12),
+    marginHorizontal: scale(6),
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   activeCustomTab: {
     backgroundColor: "#4A90E2",
@@ -626,23 +680,30 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: scale(20),
-    paddingVertical: verticalScale(4),
+    paddingVertical: verticalScale(8),
     borderBottomWidth: 1,
-    borderBottomColor: "#ddd",
+    borderBottomColor: "rgba(0,0,0,0.05)",
   },
   debugText: {
-    fontSize: fontSizes.FONT12,
+    fontSize: fontSizes.FONT11,
     flex: 1,
+    opacity: 0.7,
   },
   refreshButton: {
     backgroundColor: "#4A90E2",
-    paddingHorizontal: scale(8),
-    paddingVertical: verticalScale(2),
-    borderRadius: scale(4),
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(6),
+    borderRadius: scale(8),
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   refreshButtonText: {
     color: "#fff",
     fontSize: fontSizes.FONT12,
-    fontWeight: "600",
+    fontWeight: "700",
+    letterSpacing: 0.5,
   },
 });

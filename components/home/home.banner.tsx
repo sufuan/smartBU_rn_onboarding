@@ -36,7 +36,7 @@ export default function HomeBanner() {
 const styles = StyleSheet.create({
   container: {
     paddingVertical: verticalScale(10),
-    paddingHorizontal: verticalScale(7),
+    paddingHorizontal: scale(2), // Reduced from 7 to 2 for wider banner
   },
   dot: {
     backgroundColor: "#C6C7CC",
@@ -54,11 +54,11 @@ const styles = StyleSheet.create({
   },
   slide: {
     flex: 1,
-    marginHorizontal: scale(10),
+    marginHorizontal: scale(3), // Reduced from 10 to 3 for wider banner
   },
   image: {
     height: moderateScale(185),
-    borderRadius: scale(5),
+    borderRadius: scale(8), // Slightly increased border radius for better look
     width: "100%",
   },
 });

@@ -1,17 +1,17 @@
+import { useTheme } from "@/context/theme.context";
 import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import useUserData from "@/hooks/useUserData";
 import {
-    fontSizes,
-    IsAndroid,
-    IsHaveNotch,
-    IsIPAD,
+  fontSizes,
+  IsAndroid,
+  IsHaveNotch,
+  IsIPAD,
 } from "@/themes/app.constant";
 import {
-    Feather,
-    FontAwesome,
-    Ionicons,
-    MaterialCommunityIcons,
-    MaterialIcons,
+  FontAwesome,
+  Ionicons,
+  MaterialCommunityIcons,
+  MaterialIcons
 } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -19,20 +19,21 @@ import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import React from "react";
 import {
-    Image,
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View,
+  Image,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
 
 export default function ProfileScreen() {
   // --- Hooks for user data and safe area ---
+  const { theme } = useTheme();
   const { user } = useSubscriptionStatus();
   const { name, email, avatar } = useUserData();
   const insets = useSafeAreaInsets();
@@ -42,22 +43,7 @@ export default function ProfileScreen() {
     try {
       console.log('🚪 Starting logout process...');
 
-      // 1. Sign out from Google to clear Google's session
-      try {
-        const isSignedIn = await GoogleSignin.isSignedIn();
-        if (isSignedIn) {
-          console.log('🔄 Signing out from Google...');
-          await GoogleSignin.signOut();
-          console.log('✅ Google sign-out successful');
-        } else {
-          console.log('ℹ️ User not signed in to Google');
-        }
-      } catch (googleError) {
-        console.error('⚠️ Google sign-out error (continuing with logout):', googleError);
-        // Continue with logout even if Google sign-out fails
-      }
-
-      // 2. Clear all local storage
+      // Clear all local storage
       console.log('🧹 Clearing local storage...');
       await SecureStore.deleteItemAsync("accessToken");
       await SecureStore.deleteItemAsync("name");
@@ -66,7 +52,7 @@ export default function ProfileScreen() {
 
       console.log('✅ Logout completed successfully');
 
-      // 3. Navigate to onboarding
+      // Navigate to onboarding
       router.push("/(routes)/onboarding");
 
     } catch (error) {
@@ -79,45 +65,34 @@ export default function ProfileScreen() {
   // --- Array of profile options for clean mapping ---
   const profileOptions = [
     {
-      title: "Enrolled Courses",
-      subtitle: "Explore your all enrolled courses",
-      icon: <Feather name="book-open" size={scale(21)} />,
-      onPress: () =>
-        router.push({
-          pathname: "/(routes)/enrolled-courses",
-          params: { courses: JSON.stringify(user?.orders) },
-        }),
+      title: "My Packages",
+      subtitle: "View active and expired laundry packages",
+      icon: <MaterialCommunityIcons name="package-variant" size={scale(22)} />,
+      onPress: () => router.push("/(routes)/my-packages"),
     },
     {
-      title: "Course Leaderboard",
-      subtitle: "Let's see your position in Leaderboard",
-      icon: <MaterialIcons name="leaderboard" size={scale(23)} />,
-      onPress: () => {
-        /* Add navigation logic if available */
-      },
+      title: "Add Points / Buy Package",
+      subtitle: "Purchase points or laundry packages",
+      icon: <MaterialIcons name="add-shopping-cart" size={scale(22)} />,
+      onPress: () => router.push("/(routes)/checkout"),
     },
     {
-      title: "My Tickets",
-      subtitle: "Explore your all support tickets",
-      icon: (
-        <MaterialCommunityIcons
-          name="message-alert-outline"
-          size={scale(22)}
-        />
-      ),
-      onPress: () => router.push("/(routes)/my-tickets"),
+      title: "Machine Access Status",
+      subtitle: "Check your machine access status",
+      icon: <MaterialCommunityIcons name="washing-machine" size={scale(22)} />,
+      onPress: () => router.push("/(routes)/access-status"),
+    },
+    {
+      title: "Referral Program",
+      subtitle: "Invite friends and earn exclusive rewards",
+      icon: <MaterialIcons name="card-giftcard" size={scale(22)} />,
+      onPress: () => router.push("/(routes)/refer-earn"),
     },
     {
       title: "Support Center",
       subtitle: "Explore our fastest support center",
       icon: <FontAwesome name="support" size={scale(22)} />,
       onPress: () => router.push("/(routes)/support-center"),
-    },
-    {
-      title: "Notifications",
-      subtitle: "Explore the important notifications",
-      icon: <Ionicons name="notifications" size={scale(22)} />,
-      onPress: () => router.push("/(routes)/notification"),
     },
     {
       title: "Settings",
@@ -143,7 +118,7 @@ export default function ProfileScreen() {
   ];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.dark ? "#131313" : "#f8f9fa" }]}>
       <LinearGradient
         colors={["#6248FF", "#8673FC"]} // Static colors
         start={{ x: 0, y: 1 }}
@@ -178,7 +153,7 @@ export default function ProfileScreen() {
             end={{ x: 1, y: 0 }}
           >
             <Text style={styles.statNumber}>{user?.orders?.length || 0}</Text>
-            <Text style={styles.statLabel}>Enrolled</Text>
+            <Text style={styles.statLabel}>Bookings</Text>
           </LinearGradient>
           <LinearGradient
             style={styles.statBox}
@@ -186,41 +161,76 @@ export default function ProfileScreen() {
             start={{ x: 0, y: 1 }}
             end={{ x: 1, y: 0 }}
           >
-            <Text style={styles.statNumber}>0</Text>
-            <Text style={styles.statLabel}>Certificates</Text>
+            <Text style={styles.statNumber}>{user?.stripeCustomerId ? "✓" : "✗"}</Text>
+            <Text style={styles.statLabel}>Access</Text>
           </LinearGradient>
         </View>
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          // Added paddingTop to prevent content from being hidden by the profile wrapper
-          paddingTop: verticalScale(90),
-          paddingHorizontal: scale(20),
-          paddingBottom: insets.bottom + verticalScale(20),
-        }}
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            // Minimal paddingTop to prevent content from being hidden by the profile wrapper
+            paddingTop: verticalScale(20),
+            paddingHorizontal: scale(20),
+            // Increased bottom padding to ensure Log Out is fully visible above tab bar
+            paddingBottom: insets.bottom + verticalScale(120), // Increased for tab bar clearance
+          }
+        ]}
       >
-        {profileOptions.map((item, idx) => (
-          <Pressable
-            key={idx}
-            style={styles.optionRow}
-            onPress={item.onPress}
-          >
-            <View style={styles.optionLeftContainer}>
-              <View style={styles.iconContainer}>
-                {/* Icon color is now static */}
-                {React.cloneElement(item.icon, {
-                  color: "#0047AB",
-                })}
+          {profileOptions.map((item, idx) => (
+            <Pressable
+              key={idx}
+              style={[
+                styles.optionRow,
+                {
+                  backgroundColor: theme.dark ? "#2a2a2a" : "#fff",
+                  borderColor: theme.dark ? "#3a3a3a" : "#f0f0f0"
+                }
+              ]}
+              onPress={item.onPress}
+              android_ripple={{
+                color: theme.dark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)"
+              }}
+            >
+              <View style={styles.optionLeftContainer}>
+                <View style={[
+                  styles.iconContainer,
+                  { backgroundColor: theme.dark ? "#3a3a3a" : "#f8f9ff" }
+                ]}>
+                  {React.cloneElement(item.icon, {
+                    color: "#4A90E2",
+                  })}
+                </View>
+                <View style={styles.optionTextContainer}>
+                  <Text style={[
+                    styles.optionTitle,
+                    { color: theme.dark ? "#fff" : "#1a1a1a" }
+                  ]}>
+                    {item.title}
+                  </Text>
+                  <Text style={[
+                    styles.optionSubtitle,
+                    { color: theme.dark ? "#b0b0b0" : "#666" }
+                  ]}>
+                    {item.subtitle}
+                  </Text>
+                </View>
               </View>
-              <View>
-                <Text style={styles.optionTitle}>{item.title}</Text>
-                <Text style={styles.optionSubtitle}>{item.subtitle}</Text>
+              <View style={[
+                styles.chevronContainer,
+                { backgroundColor: theme.dark ? "#3a3a3a" : "#f5f5f5" }
+              ]}>
+                <Ionicons
+                  name="chevron-forward"
+                  size={scale(18)}
+                  color={theme.dark ? "#888" : "#999"}
+                />
               </View>
-            </View>
-          </Pressable>
-        ))}
+            </Pressable>
+          ))}
       </ScrollView>
     </View>
   );
@@ -231,6 +241,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f5f5f5", // Static background color
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   header: {
     height: verticalScale(180),
@@ -322,32 +338,51 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: verticalScale(20),
+    marginBottom: verticalScale(12),
+    paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(16),
+    borderRadius: scale(16),
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
   optionLeftContainer: {
     flexDirection: "row",
     alignItems: "center",
+    flex: 1,
   },
   iconContainer: {
-    width: scale(38),
-    height: scale(38),
+    width: scale(48),
+    height: scale(48),
     justifyContent: "center",
     alignItems: "center",
-    borderRadius: scale(10),
-    borderWidth: 1,
-    borderColor: "#E2DDFF",
+    borderRadius: scale(12),
+    marginRight: scale(16),
+  },
+  optionTextContainer: {
+    flex: 1,
   },
   optionTitle: {
-    marginLeft: scale(10),
-    fontSize: fontSizes.FONT22,
-    fontFamily: "Poppins_400Regular",
-    color: "#000", // Static text color
+    fontSize: fontSizes.FONT18,
+    fontWeight: "600",
+    marginBottom: verticalScale(2),
   },
   optionSubtitle: {
-    marginLeft: scale(10),
-    fontSize: fontSizes.FONT15,
-    fontFamily: "Poppins_400Regular",
-    color: "#000", // Static text color
-    opacity: 0.6,
+    fontSize: fontSizes.FONT14,
+    opacity: 0.8,
+    lineHeight: fontSizes.FONT14 * 1.3,
+  },
+  chevronContainer: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    justifyContent: "center",
+    alignItems: "center",
   },
 });

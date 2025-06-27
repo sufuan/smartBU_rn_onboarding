@@ -492,7 +492,7 @@ export default function ControlScreen() {
         }
 
         if (scannedMachineIdValue !== machineData.machineId) {
-          Alert.alert("Error", `Wrong machine scanned.\nExpected: ${machineData.machineId}\nScanned: ${scannedMachineIdValue}`, [
+          Alert.alert("Error", `Wrong machine scanned.`, [
             {
               text: "OK",
               onPress: () => {
