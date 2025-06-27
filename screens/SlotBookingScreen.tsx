@@ -1,21 +1,20 @@
 import { useTheme } from "@/context/theme.context";
 import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import {
-  fontSizes
+    fontSizes
 } from "@/themes/app.constant";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
-import axios from "axios";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View
+    ActivityIndicator,
+    Alert,
+    Pressable,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
@@ -208,16 +207,7 @@ export default function SlotBookingScreen() {
 
       console.log("📤 Booking request:", bookingData);
 
-      const response = await axios.post<BookingResponse>(
-        `${process.env.EXPO_PUBLIC_SERVER_URI}/api/book-slot`,
-        bookingData,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            // JWT token should be handled by axios interceptor or auth middleware
-          },
-        }
-      );
+      const response = await api.post<BookingResponse>('/api/book-slot', bookingData);
 
       console.log("✅ Booking response:", response.data);
 

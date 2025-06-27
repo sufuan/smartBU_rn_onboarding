@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '@/lib/api';
+import { useEffect, useState } from 'react';
 
 interface CycleStatusResponse {
   success: boolean;
@@ -35,6 +35,7 @@ export const useCycleStatus = (slotId: string | null): UseCycleStatusReturn => {
   const [machineStatus, setMachineStatus] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastFetchTime, setLastFetchTime] = useState<number>(0);
 
   const fetchCycleStatus = async () => {
     if (!slotId) {
@@ -48,15 +49,21 @@ export const useCycleStatus = (slotId: string | null): UseCycleStatusReturn => {
       return;
     }
 
+    // Debounce: Don't fetch if we just fetched within the last 2 seconds
+    const now = Date.now();
+    if (now - lastFetchTime < 2000) {
+      console.log('🔄 Skipping cycle status fetch - too soon since last fetch');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
+    setLastFetchTime(now);
 
     try {
       console.log(`🔍 Fetching cycle status for slot: ${slotId}`);
       
-      const response = await axios.get<CycleStatusResponse>(
-        `${process.env.EXPO_PUBLIC_SERVER_URI}/api/cycle-status/${slotId}`
-      );
+      const response = await api.get<CycleStatusResponse>(`/api/cycle-status/${slotId}`);
 
       if (response.data.success) {
         const data = response.data;
@@ -80,13 +87,28 @@ export const useCycleStatus = (slotId: string | null): UseCycleStatusReturn => {
       }
     } catch (err: any) {
       console.error('❌ Error fetching cycle status:', err);
-      
+      console.error('❌ Error details:', {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message,
+        slotId
+      });
+
       if (err.response?.status === 404) {
+        console.log('🔍 Slot not found - this might be normal for new bookings');
         setError('Slot not found');
+        // Reset cycle state for 404 errors
+        setCycleStarted(false);
+        setCycleCompleted(false);
+        setCycleStartTime(null);
+        setTimeRemaining(null);
+        setMachineStatus(null);
       } else if (err.response?.status === 401) {
-        setError('Unauthorized');
+        setError('Unauthorized - please login again');
+      } else if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
+        setError('Request timeout - check your connection');
       } else {
-        setError('Failed to fetch cycle status');
+        setError(`Failed to fetch cycle status: ${err.message}`);
       }
     } finally {
       setIsLoading(false);
@@ -95,7 +117,20 @@ export const useCycleStatus = (slotId: string | null): UseCycleStatusReturn => {
 
   // Fetch cycle status when slotId changes
   useEffect(() => {
-    fetchCycleStatus();
+    let isMounted = true;
+
+    const fetchWithMountCheck = async () => {
+      if (isMounted) {
+        await fetchCycleStatus();
+      }
+    };
+
+    fetchWithMountCheck();
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+    };
   }, [slotId]);
 
   return {

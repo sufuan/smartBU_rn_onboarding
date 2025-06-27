@@ -7,15 +7,25 @@ const api = axios.create({
   timeout: 10000,
 });
 
+// Track last logged token to reduce spam
+let lastLoggedToken: string | null = null;
+
 // Request interceptor to add auth token
 api.interceptors.request.use(
   async (config) => {
     const token = await AsyncStorage.getItem('accessToken');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-      console.log('🔑 API Request with token:', token.substring(0, 20) + '...');
+
+      // Only log token if it's different from last logged token
+      const tokenPreview = token.substring(0, 20) + '...';
+      if (lastLoggedToken !== tokenPreview) {
+        console.log('🔑 API Request with token:', tokenPreview);
+        lastLoggedToken = tokenPreview;
+      }
     } else {
       console.log('❌ API Request: No token found in AsyncStorage');
+      lastLoggedToken = null;
     }
     return config;
   },

@@ -108,39 +108,32 @@ async function main() {
     // Generate commands
     console.log('\n📋 Database Commands to Run:');
     console.log('═'.repeat(50));
-    
+
     if (selectedSubscription.stripeCustomerId) {
-      console.log('1. Update existing user:');
+      console.log('✅ Update existing user subscription:');
       console.log(`   db.User.updateOne(`);
       console.log(`     { email: "${email}" },`);
       console.log(`     { $set: { stripeCustomerId: "${selectedSubscription.stripeCustomerId}" } }`);
       console.log(`   )`);
-      
-      console.log('\n2. Or create new user:');
-      console.log(`   db.User.insertOne({`);
-      console.log(`     email: "${email}",`);
-      console.log(`     name: "${email.split('@')[0]}",`);
-      console.log(`     password: "$2b$10$hashedPasswordHere",`);
-      console.log(`     verified: true,`);
-      console.log(`     stripeCustomerId: "${selectedSubscription.stripeCustomerId}"`);
-      console.log(`   })`);
     } else {
-      console.log('1. Remove subscription (set to null):');
+      console.log('❌ Remove subscription (set to null):');
       console.log(`   db.User.updateOne(`);
       console.log(`     { email: "${email}" },`);
       console.log(`     { $set: { stripeCustomerId: null } }`);
       console.log(`   )`);
     }
-    
-    console.log('\n🔑 Default Password for Testing:');
-    console.log('   Raw: DevTest123!');
-    console.log('   Hashed: $2b$10$rQJ5qP7QJ5qP7QJ5qP7QJ5qP7QJ5qP7QJ5qP7QJ5qP7QJ5qP7QJ5qP7Q');
-    
+
+    console.log('\n🚀 Alternative: Use API Endpoint (Recommended):');
+    console.log(`   curl -X POST http://localhost:3000/api/dev/update-subscription \\`);
+    console.log(`     -H "Content-Type: application/json" \\`);
+    console.log(`     -d '{"email": "${email}", "subscriptionType": ${choice}}'`);
+
     console.log('\n📱 Testing Instructions:');
-    console.log('1. Run the database commands above');
+    console.log('1. Run ONE of the commands above (MongoDB OR API)');
     console.log('2. Open your laundry app');
-    console.log(`3. Login with: ${email} / DevTest123!`);
+    console.log(`3. Login with your existing password for: ${email}`);
     console.log('4. Check subscription status in the app');
+    console.log('5. If subscription still shows "NONE", check the debug logs');
     
     console.log('\n✅ Commands generated successfully!');
 

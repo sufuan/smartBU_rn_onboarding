@@ -1,10 +1,10 @@
 import { useTheme } from "@/context/theme.context";
 import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
+import api from "@/lib/api";
 import {
   fontSizes,
 } from "@/themes/app.constant";
 import { Ionicons } from "@expo/vector-icons";
-import axios from "axios";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
@@ -74,19 +74,15 @@ export default function ControlScreen() {
       if (!machineId || !userId) return;
 
       try {
-        // Fetch machine data
-        const machineResponse = await axios.get(
-          `${process.env.EXPO_PUBLIC_SERVER_URI}/api/machines/${machineId}`
-        );
+        // Fetch machine data using authenticated API
+        const machineResponse = await api.get(`/api/machines/${machineId}`);
 
         if (machineResponse.data.success) {
           setMachineData(machineResponse.data.machine);
         }
 
         // Find the slot ID by matching user, machine, slot time, and auth code
-        const slotsResponse = await axios.get(
-          `${process.env.EXPO_PUBLIC_SERVER_URI}/api/user-slots?userId=${userId}`
-        );
+        const slotsResponse = await api.get(`/api/user-slots?userId=${userId}`);
 
         if (slotsResponse.data.success) {
           const matchingSlot = slotsResponse.data.slots.find((slot: any) =>
@@ -116,7 +112,9 @@ export default function ControlScreen() {
         backendCycleStarted,
         backendCycleCompleted,
         backendCycleStartTime,
-        backendTimeRemaining
+        backendTimeRemaining,
+        slotId,
+        currentLocalState: { cycleStarted, cycleStartTime }
       });
 
       // Update local state based on backend state
@@ -343,15 +341,12 @@ export default function ControlScreen() {
     setIsLoading(true);
 
     try {
-      const response = await axios.post(
-        `${process.env.EXPO_PUBLIC_SERVER_URI}/api/control`,
-        {
-          userId,
-          slotTime: slotTime.toISOString(),
-          machineId,
-          authCode,
-        }
-      );
+      const response = await api.post('/api/control', {
+        userId,
+        slotTime: slotTime.toISOString(),
+        machineId,
+        authCode,
+      });
 
       console.log("✅ Control API response:", response.data);
 
@@ -668,110 +663,7 @@ export default function ControlScreen() {
         </View>
 
         {/* Action Buttons */}
-        <View style={styles.buttonContainer}>
-          {/* Debug Info */}
-          <View style={[styles.debugContainer, { backgroundColor: theme.dark ? "#2a2a2a" : "#f0f0f0" }]}>
-            <Text style={[styles.debugTitle, { color: theme.dark ? "#fff" : "#000" }]}>🔧 Real-Time Debug Info</Text>
-            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-              Current Time: {new Date().toLocaleTimeString()}
-            </Text>
-            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-              Slot Time: {slotTime.toLocaleTimeString()}
-            </Text>
-            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-              Slot State: {getSlotState().toUpperCase()}
-            </Text>
-            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-              Countdown: {countdownToSlot !== null ? `${countdownToSlot}s (${formatTimer(countdownToSlot)})` : 'null'}
-            </Text>
-            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-              Active Time: {activeTimeRemaining !== null ? `${activeTimeRemaining}s (${formatTimer(activeTimeRemaining)})` : 'null'}
-            </Text>
-            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-              Slot Valid (Active): {isSlotTimeValid() ? 'YES' : 'NO'}
-            </Text>
-            {(cycleStarted || backendCycleStarted) && (
-              <>
-                <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-                  Local Cycle: {cycleStarted ? 'Started' : 'Not Started'} | Backend: {backendCycleStarted ? 'Started' : 'Not Started'}
-                </Text>
-                {(cycleStartTime || backendCycleStartTime) && (
-                  <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-                    Start Time: {(backendCycleStartTime || cycleStartTime)?.toLocaleTimeString()}
-                  </Text>
-                )}
-                <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-                  Timer: Local={timeRemaining}s | Backend={backendTimeRemaining}s
-                </Text>
-                {slotId && (
-                  <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-                    Slot ID: {slotId}
-                  </Text>
-                )}
-              </>
-            )}
-            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-              Scanner Available: {isSlotTimeValid() ? 'YES' : 'NO'}
-            </Text>
-            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-              Machine Scanned: {scannedMachineId ? 'YES' : 'NO'}
-            </Text>
-            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-              DB Machine ID: {machineId?.slice(-8)}
-            </Text>
-            <Text style={[styles.debugText, { color: theme.dark ? "#ccc" : "#666" }]}>
-              QR Machine ID: {machineData?.machineId || 'Loading...'}
-            </Text>
-          </View>
-
-          <Pressable
-            style={[
-              styles.button,
-              styles.scanButton,
-              { opacity: !isSlotTimeValid() || !!scannedMachineId || cycleStarted ? 0.5 : 1 }
-            ]}
-            onPress={handleScanQRCode}
-            disabled={!isSlotTimeValid() || !!scannedMachineId || cycleStarted || backendCycleStarted || cycleStatusLoading}
-          >
-            <Ionicons name="qr-code" size={20} color="#fff" />
-            <Text style={styles.buttonText}>
-              {cycleStatusLoading
-                ? 'Loading...'
-                : !isSlotTimeValid()
-                ? 'Scanner Not Available'
-                : scannedMachineId
-                  ? 'Already Scanned'
-                  : cycleStarted
-                    ? 'Cycle Running'
-                    : 'Scan QR Code'
-              }
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.button,
-              styles.startButton,
-              { opacity: isLoading || !authCode || !scannedMachineId || !isSlotTimeValid() || cycleStarted ? 0.5 : 1 }
-            ]}
-            onPress={handleStartCycle}
-            disabled={isLoading || !authCode || !scannedMachineId || !isSlotTimeValid() || cycleStarted || backendCycleStarted}
-          >
-            {isLoading ? (
-              <Text style={styles.buttonText}>Starting...</Text>
-            ) : (cycleStarted || backendCycleStarted) ? (
-              <>
-                <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                <Text style={styles.buttonText}>Cycle Running</Text>
-              </>
-            ) : (
-              <>
-                <Ionicons name="play-circle" size={20} color="#fff" />
-                <Text style={styles.buttonText}>Start Cycle</Text>
-              </>
-            )}
-          </Pressable>
-        </View>
+       
       </ScrollView>
 
       {/* QR Scanner Modal */}

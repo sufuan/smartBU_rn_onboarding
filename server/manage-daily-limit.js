@@ -2,32 +2,68 @@
  * Daily Limit Management Script
  *
  * This script allows you to:
- * 1. Check current daily bookings for a user
+ * 1. Check current daily bookings for any user
  * 2. Clear today's bookings for testing
  * 3. Simulate different daily limit scenarios
+ * 4. Works with dynamic email input
  */
 
 import { PrismaClient } from '@prisma/client';
+import readline from 'readline';
 
 const prisma = new PrismaClient();
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
+
+function askQuestion(question) {
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      resolve(answer.trim());
+    });
+  });
+}
 
 async function manageDailyLimit() {
-  console.log('🎯 Daily Limit Management Tool\n');
+  console.log('🎯 Daily Limit Management Tool');
+  console.log('═'.repeat(50));
 
   try {
-    // Find the test user
+    // Get email from user input
+    const email = await askQuestion('📧 Enter user email: ');
+
+    if (!email) {
+      console.log('❌ Email is required');
+      return;
+    }
+
+    // Find the user
     const user = await prisma.user.findUnique({
-      where: { email: 'abu49539@gmail.com' },
-      select: { 
+      where: { email: email.toLowerCase() },
+      select: {
         id: true,
-        email: true, 
+        email: true,
         name: true,
         stripeCustomerId: true
       }
     });
 
     if (!user) {
-      console.log('❌ User not found');
+      console.log(`❌ User not found: ${email}`);
+      console.log('\n💡 Available users:');
+
+      // Show available users for reference
+      const users = await prisma.user.findMany({
+        select: { email: true, name: true },
+        take: 5,
+        orderBy: { createdAt: 'desc' }
+      });
+
+      users.forEach((u, index) => {
+        console.log(`   ${index + 1}. ${u.email} (${u.name})`);
+      });
+
       return;
     }
 
@@ -78,10 +114,10 @@ async function manageDailyLimit() {
     console.log('1. Clear today\'s bookings (for testing)');
     console.log('2. Show booking history');
     console.log('3. Test daily limit scenario');
-    console.log('4. Exit\n');
+    console.log('4. Reset daily limit for testing');
+    console.log('5. Exit\n');
 
-    console.log('Enter your choice (1-4): ');
-    const choice = await getUserInput();
+    const choice = await askQuestion('Enter your choice (1-5): ');
 
     switch (choice.trim()) {
       case '1':
@@ -94,6 +130,9 @@ async function manageDailyLimit() {
         await testDailyLimitScenario(user.id);
         break;
       case '4':
+        await resetDailyLimitForTesting(user);
+        break;
+      case '5':
         console.log('👋 Goodbye!');
         break;
       default:
@@ -104,6 +143,7 @@ async function manageDailyLimit() {
     console.error('❌ Error:', error);
   } finally {
     await prisma.$disconnect();
+    rl.close();
   }
 }
 
@@ -114,21 +154,20 @@ async function clearTodayBookings(userId, todayBookings) {
   }
 
   console.log(`⚠️ This will delete ${todayBookings.length} booking(s) for today.`);
-  console.log('Are you sure? (y/N): ');
-  const confirm = await getUserInput();
+  const confirm = await askQuestion('Are you sure? (y/N): ');
 
-  if (confirm.trim().toLowerCase() === 'y') {
+  if (confirm.toLowerCase() === 'y' || confirm.toLowerCase() === 'yes') {
     const slotIds = todayBookings.map(slot => slot.id);
-    
+
     // Delete related records first
     await prisma.usageLog.deleteMany({
       where: { slotId: { in: slotIds } }
     });
-    
+
     await prisma.notification.deleteMany({
       where: { slotId: { in: slotIds } }
     });
-    
+
     // Delete the slots
     const deleted = await prisma.slot.deleteMany({
       where: { id: { in: slotIds } }
@@ -189,12 +228,64 @@ async function testDailyLimitScenario(userId) {
   console.log('❌ If you can book multiple slots, there\'s an issue to investigate.');
 }
 
-function getUserInput() {
-  return new Promise((resolve) => {
-    process.stdin.once('data', (data) => {
-      resolve(data.toString());
-    });
-  });
+async function resetDailyLimitForTesting(user) {
+  console.log('\n🔄 Reset Daily Limit for Testing');
+  console.log('═'.repeat(40));
+
+  console.log(`👤 User: ${user.email}`);
+  console.log(`📧 This will clear ALL bookings for this user to reset daily limits.`);
+  console.log(`⚠️ This is for TESTING purposes only!\n`);
+
+  const confirm = await askQuestion('Are you sure you want to reset daily limits? (y/N): ');
+
+  if (confirm.toLowerCase() === 'y' || confirm.toLowerCase() === 'yes') {
+    try {
+      // Get all user slots
+      const allSlots = await prisma.slot.findMany({
+        where: { userId: user.id },
+        include: { machine: true }
+      });
+
+      if (allSlots.length === 0) {
+        console.log('✅ No bookings found - daily limit already reset');
+        return;
+      }
+
+      console.log(`📊 Found ${allSlots.length} booking(s) to remove...`);
+
+      const slotIds = allSlots.map(slot => slot.id);
+
+      // Delete related records first
+      const deletedUsageLogs = await prisma.usageLog.deleteMany({
+        where: { slotId: { in: slotIds } }
+      });
+
+      const deletedNotifications = await prisma.notification.deleteMany({
+        where: { slotId: { in: slotIds } }
+      });
+
+      // Delete the slots
+      const deletedSlots = await prisma.slot.deleteMany({
+        where: { id: { in: slotIds } }
+      });
+
+      console.log('✅ Daily limit reset completed!');
+      console.log(`   📋 Deleted ${deletedSlots.count} booking(s)`);
+      console.log(`   📝 Deleted ${deletedUsageLogs.count} usage log(s)`);
+      console.log(`   🔔 Deleted ${deletedNotifications.count} notification(s)`);
+      console.log('\n🧪 Testing Instructions:');
+      console.log('1. Open your app');
+      console.log(`2. Login with: ${user.email}`);
+      console.log('3. Try booking multiple slots to test daily limit');
+      console.log('4. First booking should succeed');
+      console.log('5. Second booking should show daily limit error');
+
+    } catch (error) {
+      console.error('❌ Error resetting daily limit:', error.message);
+    }
+  } else {
+    console.log('❌ Operation cancelled');
+  }
 }
 
 manageDailyLimit();
