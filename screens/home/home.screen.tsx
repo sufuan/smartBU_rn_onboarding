@@ -5,12 +5,14 @@ import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import {
   fontSizes
 } from "@/themes/app.constant";
-import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
+  Animated,
+  Dimensions,
   FlatList,
   Pressable,
   StyleSheet,
@@ -18,6 +20,8 @@ import {
   View
 } from "react-native";
 import { scale, verticalScale } from "react-native-size-matters";
+
+const { width } = Dimensions.get('window');
 
 interface ServiceType {
   id: string;
@@ -42,12 +46,21 @@ export default function HomeScreen() {
     needsLogin
   } = useSubscriptionStatus();
 
+  // Loading and animation states
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [servicesLoaded, setServicesLoaded] = useState(false);
+
+  // Animation values
+  const fadeAnim = useState(new Animated.Value(0))[0];
+  const slideAnim = useState(new Animated.Value(50))[0];
+  const scaleAnim = useState(new Animated.Value(0.8))[0];
+
   const services: ServiceType[] = [
     {
       id: '1',
       title: 'Your Laundry',
       subtitle: 'Washing machines & slots',
-      icon: 'local-laundry-service',
+      icon: 'shirt-outline',
       color: '#4A90E2',
       route: '/(routes)/laundry',
       available: true,
@@ -56,7 +69,7 @@ export default function HomeScreen() {
       id: '2',
       title: 'Your Shop',
       subtitle: 'Shopping & marketplace',
-      icon: 'storefront',
+      icon: 'storefront-outline',
       color: '#FF6B6B',
       route: '/(routes)/shop',
       available: false,
@@ -65,12 +78,45 @@ export default function HomeScreen() {
       id: '3',
       title: 'Locker',
       subtitle: 'Secure storage solutions',
-      icon: 'lock',
+      icon: 'lock-closed-outline',
       color: '#4ECDC4',
       route: '/(routes)/locker',
       available: false,
     },
   ];
+
+  // Simulate loading and start animations
+  useEffect(() => {
+    const loadData = async () => {
+      // Simulate data loading
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      setServicesLoaded(true);
+
+      // Start animations
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      // Hide initial loading after animations
+      setTimeout(() => setIsInitialLoading(false), 300);
+    };
+
+    loadData();
+  }, [fadeAnim, slideAnim, scaleAnim]);
 
   // Manual refresh function for testing (using TanStack Query)
   const handleRefreshUser = async () => {
@@ -114,35 +160,73 @@ export default function HomeScreen() {
     }
   };
 
-  // Render service card
-  const renderService = ({ item: service }: { item: ServiceType }) => (
-    <Pressable
+  // Creative service card component
+  const renderServiceCard = (service: ServiceType, index: number) => (
+    <Animated.View
+      key={service.id}
       style={[
         styles.serviceCard,
         {
           backgroundColor: theme.dark ? "#2a2a2a" : "#fff",
-          opacity: service.available ? 1 : 0.6
+          opacity: service.available ? fadeAnim : fadeAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, 0.6]
+          }),
+          transform: [
+            {
+              translateY: slideAnim.interpolate({
+                inputRange: [0, 50],
+                outputRange: [0, 50 * (index + 1)]
+              })
+            },
+            { scale: scaleAnim }
+          ]
         }
       ]}
-      onPress={() => handleServicePress(service)}
     >
-      <View style={[styles.serviceIcon, { backgroundColor: service.color }]}>
-        <MaterialIcons name={service.icon as any} size={32} color="#fff" />
-      </View>
+      <Pressable
+        style={styles.serviceCardContent}
+        onPress={() => handleServicePress(service)}
+        android_ripple={{
+          color: theme.dark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)"
+        }}
+      >
+        <LinearGradient
+          colors={[service.color, `${service.color}CC`]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.serviceIconGradient}
+        >
+          <Ionicons name={service.icon as any} size={36} color="#fff" />
+        </LinearGradient>
 
-      <View style={styles.serviceContent}>
-        <Text style={[styles.serviceTitle, { color: theme.dark ? "#fff" : "#000" }]}>{service.title}</Text>
-        <Text style={[styles.serviceSubtitle, { color: theme.dark ? "#ccc" : "#666" }]}>{service.subtitle}</Text>
+        <View style={styles.serviceContent}>
+          <Text style={[styles.serviceTitle, { color: theme.dark ? "#fff" : "#000" }]}>
+            {service.title}
+          </Text>
+          <Text style={[styles.serviceSubtitle, { color: theme.dark ? "#ccc" : "#666" }]}>
+            {service.subtitle}
+          </Text>
 
-        {!service.available && (
-          <Text style={styles.comingSoon}>Coming Soon</Text>
-        )}
-      </View>
+          {!service.available && (
+            <View style={styles.comingSoonBadge}>
+              <Text style={styles.comingSoonText}>Coming Soon</Text>
+            </View>
+          )}
+        </View>
 
-      <View style={styles.serviceArrow}>
-        <Ionicons name="chevron-forward" size={20} color={theme.dark ? "#666" : "#ccc"} />
-      </View>
-    </Pressable>
+        <View style={[
+          styles.serviceArrow,
+          { backgroundColor: theme.dark ? "#3a3a3a" : "#f5f5f5" }
+        ]}>
+          <Ionicons
+            name="chevron-forward"
+            size={20}
+            color={service.available ? service.color : (theme.dark ? "#666" : "#ccc")}
+          />
+        </View>
+      </Pressable>
+    </Animated.View>
   );
 
   return (
@@ -252,7 +336,7 @@ export default function HomeScreen() {
             </>
           )}
           data={services}
-          renderItem={renderService}
+          renderItem={({ item, index }) => renderServiceCard(item, index)}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContainer}
@@ -260,9 +344,87 @@ export default function HomeScreen() {
       </View>
     </LinearGradient>
   );
+
 }
 
 const styles = StyleSheet.create({
+  // Loading screen styles
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingIconContainer: {
+    width: scale(120),
+    height: scale(120),
+    borderRadius: scale(60),
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: verticalScale(20),
+  },
+  loadingTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: verticalScale(8),
+  },
+  loadingSubtitle: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginBottom: verticalScale(30),
+  },
+  loadingSpinner: {
+    marginTop: verticalScale(20),
+  },
+
+  // Enhanced service card styles
+  serviceCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: scale(20),
+  },
+  serviceIconGradient: {
+    width: scale(70),
+    height: scale(70),
+    borderRadius: scale(35),
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: scale(16),
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  comingSoonBadge: {
+    backgroundColor: '#FF9800',
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(4),
+    borderRadius: scale(12),
+    marginTop: verticalScale(8),
+    alignSelf: 'flex-start',
+  },
+  comingSoonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  servicesContainer: {
+    paddingHorizontal: scale(20),
+    paddingBottom: verticalScale(20),
+  },
+  scrollContainer: {
+    paddingBottom: verticalScale(100),
+  },
+
   sectionHeader: {
     paddingHorizontal: scale(20),
     paddingVertical: verticalScale(15),
@@ -342,20 +504,18 @@ const styles = StyleSheet.create({
     paddingBottom: verticalScale(20),
   },
   serviceCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: scale(12),
-    padding: scale(16),
-    marginBottom: verticalScale(12),
+    borderRadius: scale(20),
+    marginBottom: verticalScale(16),
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 8,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 10,
+    overflow: 'hidden',
   },
   serviceIcon: {
     width: scale(60),
@@ -384,6 +544,11 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   serviceArrow: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    justifyContent: 'center',
+    alignItems: 'center',
     marginLeft: scale(8),
   },
 });

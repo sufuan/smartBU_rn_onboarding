@@ -1,7 +1,7 @@
 import { useTheme } from "@/context/theme.context";
 import { fontSizes } from "@/themes/app.constant";
 import Ratings from "@/utils/ratings";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { Ionicons } from "@expo/vector-icons";
 import moment from "moment";
 import React from "react";
 import { Image, Text, View } from "react-native";
@@ -110,8 +110,8 @@ export default function ReviewCard({ item }: { item: ReviewsType }) {
                     }}
                   >
                     {item.replies[0]?.user?.name}{" "}
-                    <MaterialIcons
-                      name="verified"
+                    <Ionicons
+                      name="checkmark-circle"
                       size={scale(16)}
                       color="#0095F6"
                     />

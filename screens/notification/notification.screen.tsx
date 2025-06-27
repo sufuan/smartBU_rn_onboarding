@@ -3,7 +3,7 @@ import { useTheme } from "@/context/theme.context";
 import { setAuthorizationHeader } from "@/hooks/fetch/useUser";
 import useUserData from "@/hooks/useUserData";
 import { fontSizes } from "@/themes/app.constant";
-import { AntDesign, MaterialIcons } from "@expo/vector-icons";
+import { AntDesign, Ionicons } from "@expo/vector-icons";
 import axios from "axios";
 import { router } from "expo-router";
 import moment from "moment";
@@ -63,8 +63,8 @@ export default function NotificationScreen() {
           style={styles.deleteButton}
           onPress={() => notificationDeleteHandler(item)}
         >
-          <MaterialIcons
-            name="delete-outline"
+          <Ionicons
+            name="trash-outline"
             size={scale(25)}
             color={"#fff"}
           />
