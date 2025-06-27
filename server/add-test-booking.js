@@ -1,13 +1,27 @@
 /**
  * Add Test Active Booking Script
- * 
+ *
  * This script creates an active booking for immediate testing
  * without waiting for scheduled times.
+ * Now supports dynamic email input and machine selection.
  */
 
 import { PrismaClient } from '@prisma/client';
+import readline from 'readline';
 
 const prisma = new PrismaClient();
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
+
+function askQuestion(question) {
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      resolve(answer.trim());
+    });
+  });
+}
 
 // Generate random auth code
 function generateAuthCode() {
@@ -19,57 +33,99 @@ function generateAuthCode() {
   return result;
 }
 
+// Get user by email
+async function getUserByEmail(email) {
+  if (!email) {
+    console.log('❌ Email is required');
+    return null;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email: email.toLowerCase() }
+  });
+
+  if (!user) {
+    console.log(`❌ User not found: ${email}`);
+    console.log('\n💡 Available users:');
+
+    const users = await prisma.user.findMany({
+      select: { email: true, name: true },
+      take: 5,
+      orderBy: { createdAt: 'desc' }
+    });
+
+    users.forEach((u, index) => {
+      console.log(`   ${index + 1}. ${u.email} (${u.name})`);
+    });
+
+    return null;
+  }
+
+  console.log(`✅ User found: ${user.name} (${user.email})`);
+  return user;
+}
+
+// Get available machines
+async function selectMachine() {
+  const machines = await prisma.machine.findMany({
+    select: { id: true, machineId: true, location: true, status: true }
+  });
+
+  if (machines.length === 0) {
+    console.log('❌ No machines found in database');
+    return null;
+  }
+
+  console.log('\n🏭 Available Machines:');
+  machines.forEach((machine, index) => {
+    console.log(`   ${index + 1}. ${machine.machineId} (${machine.status}) - ${machine.location || 'No location'}`);
+  });
+
+  const choice = await askQuestion(`\nSelect machine (1-${machines.length}): `);
+  const machineIndex = parseInt(choice) - 1;
+
+  if (machineIndex < 0 || machineIndex >= machines.length) {
+    console.log('❌ Invalid machine selection');
+    return null;
+  }
+
+  const selectedMachine = machines[machineIndex];
+  console.log(`✅ Selected: ${selectedMachine.machineId} at ${selectedMachine.location}`);
+  return selectedMachine;
+}
+
 async function addTestBooking() {
   try {
     console.log('🚀 Adding Test Active Booking...\n');
 
-    // Your user ID (from the logs)
-    const userId = '6851bd571eb4567f348ff4d1';
-    
-    // WASHER-001 machine ID (from the logs)
-    const machineId = '6851b99521aaf8ec986f6b99';
+    // Get user email from input
+    const email = await askQuestion('📧 Enter user email: ');
+    const user = await getUserByEmail(email);
+    if (!user) return;
+
+    // Select machine
+    const machine = await selectMachine();
+    if (!machine) return;
 
     // Create a slot that starts in 2 minutes and lasts 30 minutes
     const now = new Date();
     const slotTime = new Date(now.getTime() + 2 * 60 * 1000); // 2 minutes from now
     const authCode = generateAuthCode();
 
-    console.log('📋 Booking Details:');
-    console.log(`   User ID: ${userId}`);
-    console.log(`   Machine ID: ${machineId}`);
+    console.log('\n📋 Booking Details:');
+    console.log(`   User: ${user.name} (${user.email})`);
+    console.log(`   User ID: ${user.id}`);
+    console.log(`   Machine: ${machine.machineId} at ${machine.location}`);
+    console.log(`   Machine ID: ${machine.id}`);
     console.log(`   Slot Time: ${slotTime.toISOString()}`);
     console.log(`   Local Time: ${slotTime.toLocaleString()}`);
     console.log(`   Auth Code: ${authCode}`);
     console.log(`   Duration: 30 minutes\n`);
 
-    // Check if user exists
-    const user = await prisma.user.findUnique({
-      where: { id: userId }
-    });
-
-    if (!user) {
-      console.log('❌ User not found!');
-      return;
-    }
-
-    console.log(`✅ User found: ${user.name} (${user.email})`);
-
-    // Check if machine exists
-    const machine = await prisma.machine.findUnique({
-      where: { id: machineId }
-    });
-
-    if (!machine) {
-      console.log('❌ Machine not found!');
-      return;
-    }
-
-    console.log(`✅ Machine found: ${machine.machineId} at ${machine.location}`);
-
     // Check for existing active bookings
     const existingBooking = await prisma.slot.findFirst({
       where: {
-        userId: userId,
+        userId: user.id,
         status: 'Reserved',
         slotTime: {
           gte: new Date()
@@ -93,8 +149,8 @@ async function addTestBooking() {
     // Create the new test booking
     const newBooking = await prisma.slot.create({
       data: {
-        userId: userId,
-        machineId: machineId,
+        userId: user.id,
+        machineId: machine.id,
         slotTime: slotTime,
         authCode: authCode,
         status: 'Reserved',
@@ -144,6 +200,7 @@ async function addTestBooking() {
     console.error('❌ Error creating test booking:', error);
   } finally {
     await prisma.$disconnect();
+    rl.close();
   }
 }
 
@@ -174,10 +231,30 @@ async function addCustomBooking() {
   }
 }
 
-async function addTestBookingAtTime(slotTime) {
+async function addTestBookingAtTime(slotTime, email = null, machineChoice = null) {
   try {
-    const userId = '6851bd571eb4567f348ff4d1';
-    const machineId = '6851b99521aaf8ec986f6b99';
+    // Get user email from input if not provided
+    if (!email) {
+      email = await askQuestion('📧 Enter user email: ');
+    }
+
+    const user = await getUserByEmail(email);
+    if (!user) return;
+
+    // Select machine if not provided
+    let machine;
+    if (machineChoice) {
+      const machines = await prisma.machine.findMany();
+      machine = machines[machineChoice - 1];
+      if (!machine) {
+        console.log('❌ Invalid machine choice');
+        return;
+      }
+    } else {
+      machine = await selectMachine();
+      if (!machine) return;
+    }
+
     const authCode = generateAuthCode();
     const now = new Date();
 
@@ -186,7 +263,7 @@ async function addTestBookingAtTime(slotTime) {
     // Remove existing active booking
     await prisma.slot.deleteMany({
       where: {
-        userId: userId,
+        userId: user.id,
         status: 'Reserved',
         slotTime: { gte: new Date(Date.now() - 60 * 60 * 1000) } // Last hour
       }
@@ -195,8 +272,8 @@ async function addTestBookingAtTime(slotTime) {
     // Create new booking
     const newBooking = await prisma.slot.create({
       data: {
-        userId: userId,
-        machineId: machineId,
+        userId: user.id,
+        machineId: machine.id,
         slotTime: slotTime,
         authCode: authCode,
         status: 'Reserved',
@@ -221,15 +298,21 @@ async function addTestBookingAtTime(slotTime) {
     console.error('❌ Error:', error);
   } finally {
     await prisma.$disconnect();
+    rl.close();
   }
 }
 
 // Run the script
-console.log('🎯 Test Booking Creator\n');
-console.log('Usage:');
-console.log('  node add-test-booking.js        # Starts in 2 minutes');
-console.log('  node add-test-booking.js now    # Starts right now');
-console.log('  node add-test-booking.js active # Already active (started 5 min ago)');
-console.log('  node add-test-booking.js soon   # Starts in 1 minute\n');
+console.log('🎯 Dynamic Test Booking Creator\n');
+console.log('✨ Features:');
+console.log('  • Dynamic email input (no more hardcoded users)');
+console.log('  • Machine selection from available machines');
+console.log('  • Multiple timing options');
+console.log('  • Automatic cleanup of existing bookings\n');
+console.log('📋 Usage:');
+console.log('  node add-test-booking.js        # Starts in 2 minutes (interactive)');
+console.log('  node add-test-booking.js now    # Starts right now (interactive)');
+console.log('  node add-test-booking.js active # Already active - started 5 min ago (interactive)');
+console.log('  node add-test-booking.js soon   # Starts in 1 minute (interactive)\n');
 
 addCustomBooking();

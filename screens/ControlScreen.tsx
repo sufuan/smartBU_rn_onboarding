@@ -663,7 +663,47 @@ export default function ControlScreen() {
         </View>
 
         {/* Action Buttons */}
-       
+        <View style={styles.buttonContainer}>
+          {/* QR Scanner Button */}
+          <Pressable
+            style={[
+              styles.button,
+              styles.scanButton,
+              { opacity: !isSlotTimeValid() ? 0.5 : 1 }
+            ]}
+            onPress={handleScanQRCode}
+            disabled={!isSlotTimeValid()}
+          >
+            <Ionicons name="qr-code-outline" size={20} color="#fff" />
+            <Text style={styles.buttonText}>Scan QR Code</Text>
+          </Pressable>
+
+          {/* Start Cycle Button */}
+          <Pressable
+            style={[
+              styles.button,
+              styles.startButton,
+              { opacity: isLoading || !authCode || !scannedMachineId || !isSlotTimeValid() || cycleStarted ? 0.5 : 1 }
+            ]}
+            onPress={handleStartCycle}
+            disabled={isLoading || !authCode || !scannedMachineId || !isSlotTimeValid() || cycleStarted || backendCycleStarted}
+          >
+            {isLoading ? (
+              <Text style={styles.buttonText}>Starting...</Text>
+            ) : (cycleStarted || backendCycleStarted) ? (
+              <>
+                <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                <Text style={styles.buttonText}>Cycle Running</Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="play-circle" size={20} color="#fff" />
+                <Text style={styles.buttonText}>Start Cycle</Text>
+              </>
+            )}
+          </Pressable>
+        </View>
+
       </ScrollView>
 
       {/* QR Scanner Modal */}
