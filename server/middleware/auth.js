@@ -9,7 +9,7 @@ export const isAuthenticated = async (req, res, next) => {
       const token = accessToken.slice(7, accessToken.length);
 
       // verify the token
-      const userData = jwt.verify(token, process.env.JWT_ACCESS_TOKEN_SECRET);
+      const userData = jwt.verify(token, process.env.JWT_SECRET_KEY);
 
       // fetching user data
       const user = await prisma.user.findUnique({

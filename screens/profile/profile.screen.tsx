@@ -1,32 +1,32 @@
+import { useAuth } from "@/context/auth.context";
 import { useTheme } from "@/context/theme.context";
 import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import useUserData from "@/hooks/useUserData";
 import {
-  fontSizes,
-  IsAndroid,
-  IsHaveNotch,
-  IsIPAD,
+    fontSizes,
+    IsAndroid,
+    IsHaveNotch,
+    IsIPAD,
 } from "@/themes/app.constant";
 import {
-  FontAwesome,
-  Ionicons,
-  MaterialCommunityIcons,
-  MaterialIcons
+    FontAwesome,
+    Ionicons,
+    MaterialCommunityIcons,
+    MaterialIcons
 } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import React from "react";
 import {
-  Image,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View,
+    Image,
+    Pressable,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
@@ -34,6 +34,7 @@ import { scale, verticalScale } from "react-native-size-matters";
 export default function ProfileScreen() {
   // --- Hooks for user data and safe area ---
   const { theme } = useTheme();
+  const { logout } = useAuth();
   const { user } = useSubscriptionStatus();
   const { name, email, avatar } = useUserData();
   const insets = useSafeAreaInsets();
@@ -42,23 +43,10 @@ export default function ProfileScreen() {
   const logoutHandler = async () => {
     try {
       console.log('🚪 Starting logout process...');
-
-      // Clear all local storage
-      console.log('🧹 Clearing local storage...');
-      await SecureStore.deleteItemAsync("accessToken");
-      await SecureStore.deleteItemAsync("name");
-      await SecureStore.deleteItemAsync("email");
-      await SecureStore.deleteItemAsync("avatar");
-
+      await logout();
       console.log('✅ Logout completed successfully');
-
-      // Navigate to onboarding
-      router.push("/(routes)/onboarding");
-
     } catch (error) {
       console.error('❌ Logout error:', error);
-      // Even if there's an error, try to navigate to onboarding
-      router.push("/(routes)/onboarding");
     }
   };
 

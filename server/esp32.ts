@@ -26,6 +26,14 @@ class ESP32Manager {
       connectTimeout: 30000, // 30 seconds
     };
 
+    // Check if MQTT is enabled
+    const mqttEnabled = process.env.MQTT_ENABLED !== 'false';
+
+    if (!mqttEnabled) {
+      console.log('⏭️ ESP32Manager: MQTT disabled by configuration');
+      return;
+    }
+
     if (!this.config.mockMode) {
       this.initializeMQTT();
     } else {
@@ -140,6 +148,12 @@ class ESP32Manager {
    */
   public async startCycle(machineId: string, slotEndTime?: Date): Promise<void> {
     try {
+      // Check if MQTT is enabled
+      if (process.env.MQTT_ENABLED === 'false') {
+        console.log(`📤 [MOCK] ESP32Manager: Started cycle for machine ${machineId}`);
+        return;
+      }
+
       const topic = `washer/${machineId}/control`;
 
       if (slotEndTime) {
@@ -168,6 +182,12 @@ class ESP32Manager {
    */
   public async stopCycle(machineId: string): Promise<void> {
     try {
+      // Check if MQTT is enabled
+      if (process.env.MQTT_ENABLED === 'false') {
+        console.log(`📤 [MOCK] ESP32Manager: Stopped cycle for machine ${machineId}`);
+        return;
+      }
+
       const topic = `washer/${machineId}/control`;
       await this.publishMessage(topic, 'stop');
       console.log(`🛑 ESP32Manager: Stopped cycle for machine ${machineId}`);
@@ -189,6 +209,12 @@ class ESP32Manager {
     line4?: string;
   }): Promise<void> {
     try {
+      // Check if MQTT is enabled
+      if (process.env.MQTT_ENABLED === 'false') {
+        console.log(`📤 [MOCK] ESP32Manager: Updated display for machine ${machineId}:`, displayData);
+        return;
+      }
+
       const topic = `washer/${machineId}/display`;
       const message = JSON.stringify(displayData);
       await this.publishMessage(topic, message);

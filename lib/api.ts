@@ -1,5 +1,5 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
 
 // Set up axios defaults
 const api = axios.create({
@@ -10,9 +10,12 @@ const api = axios.create({
 // Request interceptor to add auth token
 api.interceptors.request.use(
   async (config) => {
-    const token = await SecureStore.getItemAsync('accessToken');
+    const token = await AsyncStorage.getItem('accessToken');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+      console.log('🔑 API Request with token:', token.substring(0, 20) + '...');
+    } else {
+      console.log('❌ API Request: No token found in AsyncStorage');
     }
     return config;
   },
@@ -26,8 +29,14 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error.response?.status === 401) {
+      console.log('❌ 401 Unauthorized - Token invalid or expired');
+      console.log('🔄 Clearing stored auth data...');
+
       // Token expired, clear it
-      await SecureStore.deleteItemAsync('accessToken');
+      await AsyncStorage.removeItem('accessToken');
+      await AsyncStorage.removeItem('user');
+
+      console.log('✅ Auth data cleared - user needs to login again');
     }
     return Promise.reject(error);
   }

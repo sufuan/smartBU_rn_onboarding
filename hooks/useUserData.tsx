@@ -1,22 +1,11 @@
-import * as SecureStore from "expo-secure-store";
-import { useEffect, useState } from "react";
+import { useAuth } from "@/context/auth.context";
 
 export default function useUserData() {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [avatar, setAvatar] = useState("");
+  const { user } = useAuth();
 
-  useEffect(() => {
-    const getUserSession = async () => {
-      const name = SecureStore.getItem("name");
-      const email = SecureStore.getItem("email");
-      const avatar = SecureStore.getItem("avatar");
-      setName(name!);
-      setEmail(email!);
-      setAvatar(avatar!);
-    };
-    getUserSession();
-  }, []);
-
-  return { name, email, avatar };
+  return {
+    name: user?.name || "",
+    email: user?.email || "",
+    avatar: user?.avatar || ""
+  };
 }

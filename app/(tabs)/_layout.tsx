@@ -1,3 +1,4 @@
+import AuthGuard from "@/components/auth/auth.guard";
 import { useTheme } from "@/context/theme.context";
 import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import { fontSizes, IsAndroid, IsIOS } from "@/themes/app.constant";
@@ -16,6 +17,7 @@ export default function _layout() {
   const insets = useSafeAreaInsets();
 
   return (
+    <AuthGuard requireAuth={true}>
     <View style={{
       flex: 1,
       backgroundColor: theme.dark ? '#131313' : '#f5f5f5',
@@ -152,5 +154,6 @@ export default function _layout() {
         <Tabs.Screen name="profile/index" />
       </Tabs>
     </View>
+    </AuthGuard>
   );
 }

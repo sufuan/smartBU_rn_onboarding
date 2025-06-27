@@ -110,7 +110,7 @@ export default function LaundryScreen() {
                   { timeout: 5000 } // 5 second timeout for slots
                 );
 
-                console.log('✅ Slots response for', machine.machineId, ':', slotsResponse.data);
+               
                 if (slotsResponse.data.success) {
                   const availableSlots = slotsResponse.data.slots.map((slot: any) => ({
                     ...slot,

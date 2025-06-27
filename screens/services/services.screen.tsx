@@ -1,21 +1,21 @@
 import { useTheme } from "@/context/theme.context";
 import { useSubscriptionStatus } from "@/hooks/queries/useUserQuery";
 import {
-    fontSizes
+  fontSizes
 } from "@/themes/app.constant";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import axios from "axios";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Pressable,
-    RefreshControl,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scale, verticalScale } from "react-native-size-matters";
@@ -77,7 +77,7 @@ export default function ServicesScreen() {
                 `${process.env.EXPO_PUBLIC_SERVER_URI}/api/slots?machineId=${machine.id}`
               );
 
-              console.log('✅ Slots response for', machine.machineId, ':', slotsResponse.data);
+             
               if (slotsResponse.data.success) {
                 const availableSlots = slotsResponse.data.slots.map((slot: any) => ({
                   ...slot,

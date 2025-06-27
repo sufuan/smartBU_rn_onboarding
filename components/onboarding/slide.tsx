@@ -1,25 +1,24 @@
 import { HEIGHT, WIDTH } from "@/configs/constants";
 import {
-  fontSizes,
-  SCREEN_WIDTH,
-  windowHeight,
-  windowWidth,
+    fontSizes,
+    SCREEN_WIDTH,
+    windowHeight,
+    windowWidth,
 } from "@/themes/app.constant";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useState } from "react";
+import { router } from "expo-router";
+import React from "react";
 import {
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Platform,
+    Pressable,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { moderateScale, scale, verticalScale } from "react-native-size-matters";
 import { Defs, RadialGradient, Rect, Stop, Svg } from "react-native-svg";
-import AuthModal from "../auth/auth.modal";
 
 export default function Slide({
   slide,
@@ -32,11 +31,10 @@ export default function Slide({
   setIndex: (value: number) => void;
   totalSlides: number;
 }) {
-  const [modalVisible, setModalVisible] = useState(false);
-
   const handlePress = (index: number, setIndex: (index: number) => void) => {
     if (index === 2) {
-      setModalVisible(true);
+      // Navigate to auth screen instead of showing modal
+      router.push("/(routes)/auth");
     } else {
       setIndex(index + 1);
     }
@@ -141,18 +139,6 @@ export default function Slide({
           />
         </TouchableOpacity>
       )}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => {
-          setModalVisible(!modalVisible);
-        }}
-      >
-        <Pressable style={{ flex: 1 }} onPress={() => setModalVisible(false)}>
-          <AuthModal setModalVisible={setModalVisible} />
-        </Pressable>
-      </Modal>
     </>
   );
 }

@@ -8,6 +8,10 @@ import { isAuthenticated } from "./middleware/auth.js";
 import prisma from "./utils/prisma.js";
 import { sendToken } from "./utils/sendToken.js";
 
+// Additional imports for authentication
+import bcrypt from "bcrypt";
+import nodemailer from "nodemailer";
+
 dotenv.config();
 
 const app = express();
@@ -131,6 +135,50 @@ if (process.env.NODE_ENV !== 'test' && process.env.MQTT_ENABLED !== 'false') {
   console.log('⏭️ MQTT connection disabled by configuration');
 }
 
+// Email Configuration
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+// Helper Functions for Authentication
+const generateOTP = (): string => {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+};
+
+const hashPassword = async (password: string): Promise<string> => {
+  const saltRounds = 12;
+  return await bcrypt.hash(password, saltRounds);
+};
+
+const comparePassword = async (password: string, hashedPassword: string): Promise<boolean> => {
+  return await bcrypt.compare(password, hashedPassword);
+};
+
+const sendOTPEmail = async (email: string, otp: string): Promise<void> => {
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: 'Your LaundryApp Verification Code',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #4A90E2;">LaundryApp Verification</h2>
+        <p>Your verification code is:</p>
+        <div style="background-color: #f5f5f5; padding: 20px; text-align: center; margin: 20px 0;">
+          <h1 style="color: #4A90E2; font-size: 32px; margin: 0; letter-spacing: 5px;">${otp}</h1>
+        </div>
+        <p>This code will expire in 5 minutes.</p>
+        <p>If you didn't request this code, please ignore this email.</p>
+      </div>
+    `,
+  };
+
+  await transporter.sendMail(mailOptions);
+};
+
 // Utility function to generate random auth code
 const generateAuthCode = (): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -185,7 +233,270 @@ const asyncHandler = (fn: AsyncRequestHandler) => (req: Request | AuthenticatedR
   });
 };
 
-// Login Endpoint
+// ==================== NEW AUTHENTICATION ENDPOINTS ====================
+
+// 1. Check Email Endpoint
+app.post("/auth/check-email", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    // Check if user exists with this email
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+
+    res.json({
+      exists: !!user,
+      message: user ? "Email found" : "Email not found",
+    });
+  } catch (error) {
+    console.error("❌ Error checking email:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}));
+
+// 2. Send OTP Endpoint
+app.post("/auth/send-otp", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: "Invalid email format" });
+    }
+
+    // Check if user already exists with this email
+    const existingUser = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ message: "Email already registered. Please login instead." });
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+    // Delete any existing OTPs for this email
+    await prisma.otp.deleteMany({
+      where: { email: email.toLowerCase() },
+    });
+
+    // Create new OTP record
+    await prisma.otp.create({
+      data: {
+        email: email.toLowerCase(),
+        otp,
+        expiresAt,
+      },
+    });
+
+    // Send OTP email
+    await sendOTPEmail(email, otp);
+
+    console.log(`✅ OTP sent to ${email}: ${otp}`); // Remove in production
+
+    res.json({
+      success: true,
+      message: "OTP sent successfully",
+    });
+  } catch (error) {
+    console.error("❌ Error sending OTP:", error);
+    res.status(500).json({ message: "Failed to send OTP" });
+  }
+}));
+
+// 3. Verify OTP Endpoint
+app.post("/auth/verify-otp", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({ message: "Email and OTP are required" });
+    }
+
+    // Find valid OTP
+    const otpRecord = await prisma.otp.findFirst({
+      where: {
+        email: email.toLowerCase(),
+        otp,
+        verified: false,
+        expiresAt: {
+          gt: new Date(),
+        },
+      },
+    });
+
+    if (!otpRecord) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    // Mark OTP as verified
+    await prisma.otp.update({
+      where: { id: otpRecord.id },
+      data: { verified: true },
+    });
+
+    res.json({
+      success: true,
+      message: "OTP verified successfully",
+    });
+  } catch (error) {
+    console.error("❌ Error verifying OTP:", error);
+    res.status(500).json({ message: "Failed to verify OTP" });
+  }
+}));
+
+// 4. Complete Signup Endpoint
+app.post("/auth/complete-signup", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const { email, name, phone, password } = req.body;
+
+    if (!email || !name || !phone || !password) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+
+    // Check if OTP was verified
+    const verifiedOtp = await prisma.otp.findFirst({
+      where: {
+        email: email.toLowerCase(),
+        verified: true,
+        expiresAt: {
+          gt: new Date(Date.now() - 10 * 60 * 1000), // Allow 10 minutes after verification
+        },
+      },
+    });
+
+    if (!verifiedOtp) {
+      return res.status(400).json({ message: "Please verify your email first" });
+    }
+
+    // Check if user already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ message: "User already exists" });
+    }
+
+    // Hash password
+    const hashedPassword = await hashPassword(password);
+
+    // Create user
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email: email.toLowerCase(),
+        phone_number: phone,
+        password: hashedPassword,
+        verified: true,
+      },
+    });
+
+    // Update OTP record with user ID
+    await prisma.otp.update({
+      where: { id: verifiedOtp.id },
+      data: { userId: user.id },
+    });
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: user.id, email: user.email },
+      process.env.JWT_SECRET_KEY!,
+      { expiresIn: "7d" }
+    );
+
+    console.log(`✅ User created successfully: ${user.email}`);
+
+    res.status(201).json({
+      success: true,
+      message: "Account created successfully",
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone_number: user.phone_number,
+        verified: user.verified,
+      },
+      token,
+    });
+  } catch (error) {
+    console.error("❌ Error completing signup:", error);
+    res.status(500).json({ message: "Failed to create account" });
+  }
+}));
+
+// 5. Email/Password Login Endpoint
+app.post("/auth/login", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required" });
+    }
+
+    // Find user by email
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+
+    if (!user || !user.password) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    // Compare password
+    const isPasswordValid = await comparePassword(password, user.password);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: user.id, email: user.email },
+      process.env.JWT_SECRET_KEY!,
+      { expiresIn: "7d" }
+    );
+
+    console.log(`✅ User logged in successfully: ${user.email}`);
+
+    res.json({
+      success: true,
+      message: "Login successful",
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone_number: user.phone_number,
+        verified: user.verified,
+        stripeCustomerId: user.stripeCustomerId,
+      },
+      token,
+    });
+  } catch (error) {
+    console.error("❌ Error during login:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}));
+
+// ==================== END NEW AUTHENTICATION ENDPOINTS ====================
+
+// Original Google Login Endpoint (keeping for backward compatibility)
 app.post("/login", asyncHandler(async (req: Request, res: Response) => {
   try {
     const { signedToken } = req.body;
@@ -1350,6 +1661,56 @@ app.post("/api/cancel-slot", isAuthenticated as any, asyncHandler(async (req: Au
   } catch (error) {
     console.error("❌ Error cancelling slot:", error);
     res.status(500).json({ message: "Internal server error" });
+  }
+}));
+
+// Development Endpoint - Update User Subscription (DEV ONLY)
+app.post("/api/dev/update-subscription", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const { email, subscriptionType } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    // Subscription types
+    const subscriptionTypes = {
+      1: `cus_dev_premium_${Date.now()}`,
+      2: `cus_dev_basic_${Date.now()}`,
+      3: `cus_dev_trial_${Date.now()}`,
+      4: null, // No subscription
+      5: `cus_dev_expired_${Date.now()}`,
+      6: null  // Cancelled
+    };
+
+    const stripeCustomerId = subscriptionTypes[subscriptionType as keyof typeof subscriptionTypes];
+
+    // Update user in database
+    const updatedUser = await prisma.user.update({
+      where: { email: email.toLowerCase() },
+      data: { stripeCustomerId }
+    });
+
+    console.log(`✅ Updated subscription for ${email}: ${stripeCustomerId || 'None'}`);
+
+    res.json({
+      success: true,
+      message: "Subscription updated successfully",
+      user: {
+        email: updatedUser.email,
+        name: updatedUser.name,
+        stripeCustomerId: updatedUser.stripeCustomerId
+      }
+    });
+
+  } catch (error: any) {
+    console.error("❌ Error updating subscription:", error);
+
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.status(500).json({ error: "Failed to update subscription" });
   }
 }));
 

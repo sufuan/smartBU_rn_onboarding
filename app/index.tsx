@@ -1,27 +1,18 @@
+import { useAuth } from "@/context/auth.context";
 import { Redirect } from "expo-router";
-import * as SecureStore from "expo-secure-store";
-import React, { useEffect, useState } from "react";
+import React from "react";
+import { ActivityIndicator, View } from "react-native";
 
-export default function index() {
-  const [loggedInUser, setloggedInUser] = useState(false);
-  const [loading, setLoading] = useState(true);
+export default function Index() {
+  const { isAuthenticated, isLoading } = useAuth();
 
-  useEffect(() => {
-    const subscription = async () => {
-      const token = SecureStore.getItem("accessToken");
-      setloggedInUser(token ? true : false);
-      setLoading(false);
-    };
-    subscription();
-  }, []);
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#4A90E2" />
+      </View>
+    );
+  }
 
-  return (
-    <>
-      {loading ? (
-        <></>
-      ) : (
-        <Redirect href={!loggedInUser ? "/(routes)/onboarding" : "/(tabs)"} />
-      )}
-    </>
-  );
+  return <Redirect href={isAuthenticated ? "/(tabs)" : "/(routes)/onboarding"} />;
 }

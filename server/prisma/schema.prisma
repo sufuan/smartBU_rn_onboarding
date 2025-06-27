@@ -40,6 +40,7 @@ model User {
   id               String            @id @default(auto()) @map("_id") @db.ObjectId
   name             String
   email            String            @unique
+  password         String?           // For email/password login
   googleId         String?           // For Google Login
   phone_number     String?           // Changed to String for flexibility
   avatar           String?
@@ -52,6 +53,7 @@ model User {
   tickets          Ticket[]          // Created tickets
   ticketReplies    TicketReply[]     // Replies to tickets
   usageLogs        UsageLog[]        // Usage history for auditing
+  otps             Otp[]             // OTP records for verification
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 }
@@ -134,4 +136,18 @@ model UsageLog {
   slot        Slot       @relation(fields: [slotId], references: [id])
   action      String     // e.g., "Booked", "Started", "Completed", "Cancelled"
   createdAt   DateTime   @default(now())
+}
+
+model Otp {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String   // Email for which OTP was generated
+  otp       String   // 4-digit OTP code
+  userId    String?  @db.ObjectId // Optional, linked after verification
+  user      User?    @relation(fields: [userId], references: [id])
+  expiresAt DateTime // OTP expiration time (5 minutes)
+  verified  Boolean  @default(false) // Whether OTP has been verified
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email, expiresAt])
 }
