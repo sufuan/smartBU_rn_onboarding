@@ -12,6 +12,9 @@ import { sendToken } from "./utils/sendToken.js";
 import bcrypt from "bcrypt";
 import nodemailer from "nodemailer";
 
+// Background jobs import
+import { startBackgroundJobs } from "./background-jobs";
+
 dotenv.config();
 
 const app = express();
@@ -1338,6 +1341,15 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
       actualCycleDurationMinutes: Math.floor(actualCycleDuration / 60)
     });
 
+    // Store cycle end time for background job cleanup (replaces setTimeout)
+    const cycleEndTime = new Date(currentTime.getTime() + actualCycleDurationMs);
+    await prisma.slot.update({
+      where: { id: slot.id },
+      data: { cycleEndTime: cycleEndTime }
+    });
+
+    console.log(`⏰ Cycle end time stored: ${cycleEndTime.toISOString()} for slotId=${slot.id}`);
+
     // Send MQTT message to ESP32 relay to start the cycle with slot end time
     try {
       await startCycle(slot.machine.machineId, slotEndTime);
@@ -1363,60 +1375,7 @@ app.post("/api/control", isAuthenticated as any, asyncHandler(async (req: Authen
       console.error(`❌ ESP32: Failed to update display for machine ${slot.machine.machineId}:`, error);
     }
 
-    // Schedule timeout for cycle completion based on actual duration
-    setTimeout(async () => {
-      try {
-        console.log(`⏰ Cycle timeout reached for slotId: ${slot.id} after ${Math.floor(actualCycleDuration / 60)} minutes`);
-
-        // Send MQTT stop message
-        try {
-          await stopCycle(slot.machine.machineId);
-          console.log(`📤 ESP32: Stopped cycle for machine ${slot.machine.machineId}`);
-        } catch (error) {
-          console.error(`❌ ESP32: Failed to stop cycle for machine ${slot.machine.machineId}:`, error);
-        }
-
-        // Update slot status to Completed
-        await prisma.slot.update({
-          where: { id: slot.id },
-          data: { status: 'Completed' }
-        });
-        console.log(`✅ Slot updated to Completed: ${slot.id}`);
-
-        // Create notification for cycle completion
-        await prisma.notification.create({
-          data: {
-            userId,
-            slotId: slot.id,
-            title: "Cycle Finished",
-            message: "Your washing cycle has finished",
-          },
-        });
-        console.log(`✅ Notification created: Cycle Finished for ${userId}`);
-
-        // Create completion UsageLog entry
-        await prisma.usageLog.create({
-          data: {
-            userId,
-            machineId: slot.machine.id,
-            slotId: slot.id,
-            action: 'Completed',
-          },
-        });
-        console.log(`✅ UsageLog created: action=Completed, slotId=${slot.id}`);
-
-        // Update machine status back to Available
-        await prisma.machine.update({
-          where: { id: slot.machine.id },
-          data: { status: 'Available' }
-        });
-
-      } catch (error) {
-        console.error(`❌ Error in cycle timeout for slot ${slot.id}:`, error);
-      }
-    }, actualCycleDurationMs); // Use actual calculated duration
-
-    console.log(`⏰ Scheduled stop for slotId=${slot.id} in ${Math.floor(actualCycleDuration / 60)} minutes (${actualCycleDuration} seconds)`);
+    console.log(`⏰ Cycle will be completed by background job at ${cycleEndTime.toISOString()} for slotId=${slot.id}`);
 
     res.status(200).json({
       status: "success"
@@ -1817,15 +1776,14 @@ app.get("/api/esp32/test", asyncHandler(async (req: Request, res: Response) => {
 }));
 
 // Start background jobs for slot management
-import { startBackgroundJobs } from './background-jobs.js';
 
 // Start Server
 const PORT = parseInt(process.env.PORT || "3000");
-app.listen(PORT, "0.0.0.0", () => {
+app.listen(PORT, "0.0.0.0", async () => {
   console.log(`✅ Express server running on port ${PORT}`);
   console.log("✅ Connected to MongoDB");
 
   // Start background jobs for automatic slot cleanup
   console.log('🔧 Starting background jobs...');
-  startBackgroundJobs();
+  await startBackgroundJobs();
 });

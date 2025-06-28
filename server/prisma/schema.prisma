@@ -80,6 +80,7 @@ model Slot {
   duration      Int            // Duration in milliseconds (e.g., 1800000)
   authCode      String         // One-time auth code (e.g., "ABC123")
   status        SlotStatus     @default(Reserved)
+  cycleEndTime  DateTime?      // When the cycle should end (for background job cleanup)
   notifications Notification[] // Related notifications
   usageLogs     UsageLog[]     // Usage history
   createdAt     DateTime       @default(now())
