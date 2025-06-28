@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 // Types
 interface SendOtpRequest {
   email: string;
+  purpose?: 'signup' | 'forgot-password';
 }
 
 interface SendOtpResponse {
@@ -54,6 +55,16 @@ interface LoginResponse {
   message: string;
   user?: any;
   token?: string;
+}
+
+interface ResetPasswordRequest {
+  email: string;
+  newPassword: string;
+}
+
+interface ResetPasswordResponse {
+  success: boolean;
+  message: string;
 }
 
 // API Functions
@@ -151,6 +162,24 @@ const login = async (data: LoginRequest): Promise<LoginResponse> => {
   return result;
 };
 
+const resetPassword = async (data: ResetPasswordRequest): Promise<ResetPasswordResponse> => {
+  const response = await fetch(`${process.env.EXPO_PUBLIC_SERVER_URI}/auth/reset-password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.message || 'Failed to reset password');
+  }
+
+  return result;
+};
+
 // Custom Hooks
 export const useSendOtpMutation = () => {
   return useMutation({
@@ -193,6 +222,15 @@ export const useLoginMutation = () => {
     mutationFn: login,
     onError: (error: Error) => {
       console.error('Login error:', error.message);
+    },
+  });
+};
+
+export const useResetPasswordMutation = () => {
+  return useMutation({
+    mutationFn: resetPassword,
+    onError: (error: Error) => {
+      console.error('Reset password error:', error.message);
     },
   });
 };

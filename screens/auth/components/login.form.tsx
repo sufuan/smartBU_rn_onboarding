@@ -2,6 +2,7 @@ import { useAuth } from "@/context/auth.context";
 import { useTheme } from "@/context/theme.context";
 import { useCheckEmailMutation, useLoginMutation } from "@/hooks/mutations/useAuthMutations";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import React, { useState } from "react";
 import {
     ActivityIndicator,
@@ -253,7 +254,7 @@ export default function LoginForm() {
           <Pressable
             style={[
               styles.button,
-              { 
+              {
                 backgroundColor: password.trim() && !isLoading ? "#4A90E2" : (theme.dark ? "#3a3a3a" : "#e0e0e0"),
                 opacity: password.trim() && !isLoading ? 1 : 0.6
               }
@@ -266,6 +267,16 @@ export default function LoginForm() {
             ) : (
               <Text style={styles.buttonText}>Login</Text>
             )}
+          </Pressable>
+
+          {/* Forgot Password Link */}
+          <Pressable
+            style={styles.forgotPasswordContainer}
+            onPress={() => router.push('/(routes)/forgot-password')}
+          >
+            <Text style={[styles.forgotPasswordText, { color: "#4A90E2" }]}>
+              Forgot Password?
+            </Text>
           </Pressable>
         </View>
       )}
@@ -307,7 +318,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: scale(12),
     paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(16),
+    height: verticalScale(48), // Fixed height instead of padding
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -335,7 +346,7 @@ const styles = StyleSheet.create({
     marginLeft: scale(4),
   },
   button: {
-    paddingVertical: verticalScale(16),
+    height: verticalScale(48), // Fixed height instead of padding
     borderRadius: scale(12),
     alignItems: 'center',
     justifyContent: 'center',
@@ -351,6 +362,14 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  forgotPasswordContainer: {
+    alignItems: 'center',
+    marginTop: verticalScale(16),
+  },
+  forgotPasswordText: {
+    fontSize: scale(14),
     fontWeight: '600',
   },
 });

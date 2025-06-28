@@ -262,7 +262,7 @@ app.post("/auth/check-email", asyncHandler(async (req: Request, res: Response) =
 // 2. Send OTP Endpoint
 app.post("/auth/send-otp", asyncHandler(async (req: Request, res: Response) => {
   try {
-    const { email } = req.body;
+    const { email, purpose = 'signup' } = req.body; // purpose can be 'signup' or 'forgot-password'
 
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
@@ -279,8 +279,13 @@ app.post("/auth/send-otp", asyncHandler(async (req: Request, res: Response) => {
       where: { email: email.toLowerCase() },
     });
 
-    if (existingUser) {
+    // Handle different purposes
+    if (purpose === 'signup' && existingUser) {
       return res.status(400).json({ message: "Email already registered. Please login instead." });
+    }
+
+    if (purpose === 'forgot-password' && !existingUser) {
+      return res.status(404).json({ message: "No account found with this email address." });
     }
 
     // Generate OTP
@@ -490,6 +495,69 @@ app.post("/auth/login", asyncHandler(async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("❌ Error during login:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}));
+
+// 6. Reset Password Endpoint (for forgot password flow)
+app.post("/auth/reset-password", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return res.status(400).json({ message: "Email and new password are required" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+
+    // Check if OTP was verified for password reset
+    const verifiedOtp = await prisma.otp.findFirst({
+      where: {
+        email: email.toLowerCase(),
+        verified: true,
+        expiresAt: {
+          gt: new Date(Date.now() - 10 * 60 * 1000), // Allow 10 minutes after verification
+        },
+      },
+    });
+
+    if (!verifiedOtp) {
+      return res.status(400).json({ message: "Please verify your email first" });
+    }
+
+    // Find the user
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Hash the new password
+    const hashedPassword = await hashPassword(newPassword);
+
+    // Update user password
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+    });
+
+    // Clean up the OTP record
+    await prisma.otp.delete({
+      where: { id: verifiedOtp.id },
+    });
+
+    console.log(`✅ Password reset successfully for: ${user.email}`);
+
+    res.json({
+      success: true,
+      message: "Password reset successfully",
+    });
+  } catch (error) {
+    console.error("❌ Error resetting password:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 }));

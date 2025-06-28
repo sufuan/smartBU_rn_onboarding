@@ -1,14 +1,15 @@
 import { useAuth } from "@/context/auth.context";
+import { useOnboarding } from "@/context/onboarding.context";
 import { useTheme } from "@/context/theme.context";
 import { router } from "expo-router";
 import React, { useEffect } from "react";
 import {
-  ActivityIndicator,
-  StyleSheet,
-  Text,
-  View
+    ActivityIndicator,
+    StyleSheet,
+    Text,
+    View
 } from "react-native";
-import { scale, verticalScale } from "react-native-size-matters";
+import { verticalScale } from "react-native-size-matters";
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -17,24 +18,30 @@ interface AuthGuardProps {
 
 export default function AuthGuard({ children, requireAuth = false }: AuthGuardProps) {
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { hasSeenOnboarding, isLoading: onboardingLoading } = useOnboarding();
   const { theme } = useTheme();
 
   useEffect(() => {
-    if (!isLoading) {
+    if (!isLoading && !onboardingLoading) {
       if (requireAuth && !isAuthenticated) {
         // User needs to be authenticated but isn't
-        console.log('🔒 Authentication required, redirecting to onboarding');
-        router.replace('/(routes)/onboarding');
+        if (hasSeenOnboarding) {
+          console.log('🔒 Authentication required, redirecting to auth');
+          router.replace('/(routes)/auth');
+        } else {
+          console.log('🔒 Authentication required, redirecting to onboarding');
+          router.replace('/(routes)/onboarding');
+        }
       } else if (!requireAuth && isAuthenticated) {
         // User is authenticated but trying to access auth/onboarding screens
         console.log('✅ User already authenticated, redirecting to home');
         router.replace('/(tabs)');
       }
     }
-  }, [isLoading, isAuthenticated, requireAuth]);
+  }, [isLoading, onboardingLoading, isAuthenticated, hasSeenOnboarding, requireAuth]);
 
-  // Show loading screen while checking authentication
-  if (isLoading) {
+  // Show loading screen while checking authentication or onboarding
+  if (isLoading || onboardingLoading) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: theme.dark ? "#131313" : "#f8f9fa" }]}>
         <ActivityIndicator size="large" color="#4A90E2" />

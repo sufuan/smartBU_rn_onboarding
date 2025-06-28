@@ -1,4 +1,5 @@
 import { HEIGHT, WIDTH } from "@/configs/constants";
+import { useOnboarding } from "@/context/onboarding.context";
 import {
     fontSizes,
     SCREEN_WIDTH,
@@ -31,9 +32,13 @@ export default function Slide({
   setIndex: (value: number) => void;
   totalSlides: number;
 }) {
-  const handlePress = (index: number, setIndex: (index: number) => void) => {
+  const { markOnboardingComplete } = useOnboarding();
+
+  const handlePress = async (index: number, setIndex: (index: number) => void) => {
     if (index === 2) {
-      // Navigate to auth screen instead of showing modal
+      // Mark onboarding as complete before navigating to auth
+      console.log('✅ Onboarding completed, marking as seen...');
+      await markOnboardingComplete();
       router.push("/(routes)/auth");
     } else {
       setIndex(index + 1);

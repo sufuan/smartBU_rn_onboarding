@@ -544,7 +544,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: scale(12),
     paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(16),
+    height: verticalScale(48), // Fixed height instead of padding
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -572,7 +572,7 @@ const styles = StyleSheet.create({
     marginLeft: scale(4),
   },
   button: {
-    paddingVertical: verticalScale(16),
+    height: verticalScale(48), // Fixed height instead of padding
     borderRadius: scale(12),
     alignItems: 'center',
     justifyContent: 'center',

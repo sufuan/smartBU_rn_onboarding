@@ -121,8 +121,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       console.log('✅ User logged out successfully');
       
-      // Navigate to onboarding
-      router.replace('/(routes)/onboarding');
+      // Navigate to auth screen (not onboarding)
+      router.replace('/(routes)/auth');
     } catch (error) {
       console.error('❌ Error during logout:', error);
     }
