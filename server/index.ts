@@ -45,10 +45,29 @@ const initializeMQTT = () => {
     const mqttBrokerUrl = process.env.MQTT_BROKER_URL || mqttBroker;
     console.log(`📡 MQTT broker: ${mqttBrokerUrl}`);
 
-    mqttClient = mqtt.connect(mqttBrokerUrl, {
+    // Prepare connection options with authentication
+    const connectOptions: any = {
       reconnectPeriod: 10000, // Try to reconnect every 10 seconds
       connectTimeout: 30000, // 30 seconds timeout
-    });
+    };
+
+    // Add authentication if credentials are provided
+    const mqttUsername = process.env.MQTT_USERNAME;
+    const mqttPassword = process.env.MQTT_PASSWORD;
+
+    console.log(`🔍 MQTT Debug: Username="${mqttUsername}", Password="${mqttPassword ? '[SET]' : '[NOT SET]'}"`);
+
+    if (mqttUsername && mqttPassword) {
+      connectOptions.username = mqttUsername;
+      connectOptions.password = mqttPassword;
+      console.log(`🔐 MQTT: Using authentication for user: ${mqttUsername}`);
+    } else {
+      console.log('⚠️ MQTT: No credentials found - connecting without authentication');
+      console.log(`   Username: ${mqttUsername || 'undefined'}`);
+      console.log(`   Password: ${mqttPassword ? 'set' : 'undefined'}`);
+    }
+
+    mqttClient = mqtt.connect(mqttBrokerUrl, connectOptions);
 
     mqttClient.on('connect', () => {
       console.log(`✅ MQTT client connected to ${mqttBrokerUrl}`);

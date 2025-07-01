@@ -21,26 +21,29 @@
 
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include <WiFiClientSecure.h>
 #include <time.h>
 
 // WiFi Configuration
 const char* ssid = "TP";
 const char* password = "12233344";
 
-// MQTT Configuration
-const char* mqtt_server = "test.mosquitto.org";  // Match backend broker
-const int mqtt_port = 1883;
-const char* mqtt_client_id = "ESP32_Washer_001";
+// MQTT Configuration - HiveMQ Cloud with TLS and Authentication
+const char* mqtt_server = "4f71cefb95804d629f86f0389c391427.s1.eu.hivemq.cloud";
+const int mqtt_port = 8883;  // TLS port for secure connection
+const char* mqtt_username = "abu_sufian";      // MQTT username
+const char* mqtt_password = "Grameenphne1400"; // MQTT password
 
 // MQTT Quality of Service and Timing
 const int MQTT_QOS = 1;                    // QoS 1 for guaranteed delivery
 const int MQTT_KEEP_ALIVE_TIME = 15;       // 15 seconds keep-alive (faster than default 60s)
 const int MQTT_SOCKET_TIMEOUT_SEC = 5;     // 5 seconds socket timeout
 
-// MQTT Topics - Updated to match backend
+// MQTT Topics - Fixed for WASHER-001
 const char* control_topic = "washer/WASHER-001/control";
 const char* status_topic = "washer/WASHER-001/status";
 const char* display_topic = "washer/WASHER-001/display";
+const char* mqtt_client_id = "ESP32_Washer_001";
 
 // Hardware Configuration
 const int RELAY_PIN = 4;  // GPIO 4 for relay control (Active LOW)
@@ -52,8 +55,8 @@ const unsigned long WIFI_TIMEOUT = 10000;             // 10 seconds WiFi connect
 const unsigned long MQTT_RECONNECT_DELAY = 2000;      // 2 seconds between MQTT reconnection attempts (faster)
 const unsigned long MQTT_PING_INTERVAL = 10000;       // 10 seconds between MQTT pings
 
-// Global Variables
-WiFiClient espClient;
+// Global Variables - Updated for secure connection
+WiFiClientSecure espClient;  // Use secure client for TLS/SSL
 PubSubClient client(espClient);
 unsigned long cycleStartTime = 0;
 unsigned long slotEndTime = 0;  // When the slot expires (Unix timestamp in seconds)
@@ -95,7 +98,8 @@ void setup() {
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   Serial.println("⏰ Time synchronization started");
 
-  // Setup MQTT with optimized settings
+  // Setup secure MQTT connection
+  espClient.setInsecure();  // For testing - in production, use proper certificate validation
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(mqttCallback);
   client.setKeepAlive(15);        // Faster keep-alive (15 seconds)
@@ -201,7 +205,8 @@ void reconnectMQTT() {
     // Use unique client ID with timestamp to avoid conflicts
     String clientId = String(mqtt_client_id) + "_" + String(millis());
 
-    if (client.connect(clientId.c_str())) {
+    // Connect with authentication
+    if (client.connect(clientId.c_str(), mqtt_username, mqtt_password)) {
       Serial.println("✅ MQTT connected successfully!");
 
       // Subscribe to control topic with QoS 1

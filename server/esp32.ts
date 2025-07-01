@@ -44,8 +44,9 @@ class ESP32Manager {
   private initializeMQTT(): void {
     try {
       console.log(`🔄 ESP32Manager: Connecting to MQTT broker: ${this.config.brokerUrl}`);
-      
-      this.client = mqtt.connect(this.config.brokerUrl, {
+
+      // Prepare connection options
+      const connectOptions: any = {
         reconnectPeriod: this.config.reconnectPeriod,
         connectTimeout: this.config.connectTimeout,
         clientId: `washing-machine-server-${Date.now()}`,
@@ -53,7 +54,25 @@ class ESP32Manager {
         keepalive: 15,  // Faster keep-alive (15 seconds instead of 60)
         queueQoSZero: false,  // Don't queue QoS 0 messages
         reschedulePings: true,  // Reschedule pings on send
-      });
+      };
+
+      // Add authentication if credentials are provided
+      const mqttUsername = process.env.MQTT_USERNAME;
+      const mqttPassword = process.env.MQTT_PASSWORD;
+
+      console.log(`🔍 ESP32Manager Debug: Username="${mqttUsername}", Password="${mqttPassword ? '[SET]' : '[NOT SET]'}"`);
+
+      if (mqttUsername && mqttPassword) {
+        connectOptions.username = mqttUsername;
+        connectOptions.password = mqttPassword;
+        console.log(`🔐 ESP32Manager: Using authentication for user: ${mqttUsername}`);
+      } else {
+        console.log('⚠️ ESP32Manager: No MQTT credentials found - connecting without authentication');
+        console.log(`   Username: ${mqttUsername || 'undefined'}`);
+        console.log(`   Password: ${mqttPassword ? 'set' : 'undefined'}`);
+      }
+
+      this.client = mqtt.connect(this.config.brokerUrl, connectOptions);
 
       this.setupEventHandlers();
     } catch (error) {
