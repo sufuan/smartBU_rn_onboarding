@@ -24,7 +24,24 @@ app.use(express.json());
 // MQTT Client Setup
 let mqttClient: mqtt.MqttClient | null = null;
 let mqttReconnectAttempts = 0;
-const MAX_MQTT_RECONNECT_ATTEMPTS = 3;
+const MAX_MQTT_RECONNECT_ATTEMPTS = 10; // Increased for better reliability
+const BASE_RECONNECT_DELAY = 1000; // Start with 1 second
+const MAX_RECONNECT_DELAY = 30000; // Max 30 seconds
+let mqttReconnectTimeout: NodeJS.Timeout | null = null;
+
+// Calculate exponential backoff delay with jitter
+function calculateMqttBackoffDelay(attempts: number): number {
+  const exponentialDelay = Math.min(
+    BASE_RECONNECT_DELAY * Math.pow(2, attempts - 1),
+    MAX_RECONNECT_DELAY
+  );
+
+  // Add random jitter (±20%) to avoid thundering herd
+  const jitter = exponentialDelay * 0.2 * (Math.random() - 0.5);
+  const finalDelay = Math.max(exponentialDelay + jitter, 1000); // Minimum 1 second
+
+  return Math.floor(finalDelay);
+}
 
 const initializeMQTT = () => {
   try {
@@ -45,10 +62,15 @@ const initializeMQTT = () => {
     const mqttBrokerUrl = process.env.MQTT_BROKER_URL || mqttBroker;
     console.log(`📡 MQTT broker: ${mqttBrokerUrl}`);
 
-    // Prepare connection options with authentication
+    // Prepare connection options with authentication - optimized for fast response
     const connectOptions: any = {
-      reconnectPeriod: 10000, // Try to reconnect every 10 seconds
-      connectTimeout: 30000, // 30 seconds timeout
+      reconnectPeriod: false, // Disable automatic reconnection (we handle it manually)
+      connectTimeout: 10000, // Faster timeout (10 seconds)
+      keepalive: 10, // Very fast keep-alive (10 seconds)
+      clean: true,
+      queueQoSZero: false, // Don't queue QoS 0 messages
+      reschedulePings: true, // Reschedule pings on send
+      protocolVersion: 4, // Use MQTT 3.1.1 for better compatibility
     };
 
     // Add authentication if credentials are provided
@@ -91,8 +113,15 @@ const initializeMQTT = () => {
       }
 
       if (mqttReconnectAttempts < MAX_MQTT_RECONNECT_ATTEMPTS) {
-        console.log(`⚠️ MQTT reconnect attempt ${mqttReconnectAttempts}/${MAX_MQTT_RECONNECT_ATTEMPTS} in 10 seconds...`);
-        setTimeout(initializeMQTT, 10000); // Try again in 10 seconds
+        const backoffDelay = calculateMqttBackoffDelay(mqttReconnectAttempts);
+        console.log(`⚠️ MQTT reconnect attempt ${mqttReconnectAttempts}/${MAX_MQTT_RECONNECT_ATTEMPTS} in ${backoffDelay}ms...`);
+
+        // Clear any existing timeout
+        if (mqttReconnectTimeout) {
+          clearTimeout(mqttReconnectTimeout);
+        }
+
+        mqttReconnectTimeout = setTimeout(initializeMQTT, backoffDelay);
       } else {
         console.log(`⚠️ MQTT connection disabled after ${MAX_MQTT_RECONNECT_ATTEMPTS} failed attempts.`);
       }

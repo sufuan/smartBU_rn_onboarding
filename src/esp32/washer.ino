@@ -52,8 +52,12 @@ const int LED_PIN = 2;    // Built-in LED for status indication
 // Timing Configuration
 const unsigned long CYCLE_DURATION = 30 * 60 * 1000;  // 30 minutes in milliseconds
 const unsigned long WIFI_TIMEOUT = 10000;             // 10 seconds WiFi connection timeout
-const unsigned long MQTT_RECONNECT_DELAY = 2000;      // 2 seconds between MQTT reconnection attempts (faster)
-const unsigned long MQTT_PING_INTERVAL = 10000;       // 10 seconds between MQTT pings
+const unsigned long MQTT_PING_INTERVAL = 5000;        // 5 seconds between MQTT pings (faster response)
+
+// MQTT Retry Configuration - Exponential Backoff
+const int MAX_MQTT_RECONNECT_ATTEMPTS = 10;           // Increased for better reliability
+const unsigned long BASE_RECONNECT_DELAY = 1000;     // Start with 1 second
+const unsigned long MAX_RECONNECT_DELAY = 30000;     // Max 30 seconds
 
 // Global Variables - Updated for secure connection
 WiFiClientSecure espClient;  // Use secure client for TLS/SSL
@@ -64,7 +68,11 @@ bool cycleRunning = false;
 bool hasSlotEndTime = false;    // Whether we received a slot end time
 unsigned long lastStatusUpdate = 0;
 unsigned long lastMqttPing = 0;
-const unsigned long STATUS_UPDATE_INTERVAL = 10000;  // Send status every 10 seconds
+const unsigned long STATUS_UPDATE_INTERVAL = 5000;   // Send status every 5 seconds (faster)
+
+// MQTT Retry Variables
+int mqttReconnectAttempts = 0;
+unsigned long lastReconnectAttempt = 0;
 
 // NTP Time configuration
 const char* ntpServer = "pool.ntp.org";
@@ -98,24 +106,48 @@ void setup() {
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   Serial.println("⏰ Time synchronization started");
 
-  // Setup secure MQTT connection
+  // Setup secure MQTT connection optimized for fast response
   espClient.setInsecure();  // For testing - in production, use proper certificate validation
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(mqttCallback);
-  client.setKeepAlive(15);        // Faster keep-alive (15 seconds)
-  client.setSocketTimeout(5);     // Faster socket timeout (5 seconds)
+  client.setKeepAlive(10);        // Very fast keep-alive (10 seconds)
+  client.setSocketTimeout(3);     // Very fast socket timeout (3 seconds)
+  client.setBufferSize(1024);     // Increase buffer for faster processing
 
   Serial.println("Setup completed successfully!");
   Serial.println("Waiting for MQTT commands...");
 }
 
+// Calculate exponential backoff delay with jitter
+unsigned long calculateBackoffDelay(int attempts) {
+  // Exponential backoff: 2^attempt * baseDelay, with jitter
+  unsigned long exponentialDelay = min(
+    BASE_RECONNECT_DELAY * (1UL << (attempts - 1)), // 2^(attempts-1)
+    MAX_RECONNECT_DELAY
+  );
+
+  // Add random jitter (±20%) to avoid thundering herd
+  long jitter = (long)(exponentialDelay * 0.2 * (random(-100, 101) / 100.0));
+  unsigned long finalDelay = max((long)exponentialDelay + jitter, 1000L); // Minimum 1 second
+
+  return finalDelay;
+}
+
 void loop() {
+  // Process MQTT messages first (highest priority for fast response)
+  client.loop();
+
   // Maintain MQTT connection
   if (!client.connected()) {
     Serial.println("⚠️ MQTT disconnected - reconnecting...");
     reconnectMQTT();
   }
-  client.loop();
+
+  // Send periodic status updates (faster response)
+  if (millis() - lastStatusUpdate > STATUS_UPDATE_INTERVAL) {
+    sendStatusUpdate();
+    lastStatusUpdate = millis();
+  }
 
   // Send periodic MQTT pings to keep connection alive
   if (millis() - lastMqttPing >= MQTT_PING_INTERVAL) {
@@ -197,47 +229,54 @@ void setupWiFi() {
 }
 
 void reconnectMQTT() {
-  int attempts = 0;
-  while (!client.connected() && attempts < 5) {
-    attempts++;
-    Serial.printf("🔄 MQTT connection attempt %d/5 to %s:%d\n", attempts, mqtt_server, mqtt_port);
-
-    // Use unique client ID with timestamp to avoid conflicts
-    String clientId = String(mqtt_client_id) + "_" + String(millis());
-
-    // Connect with authentication
-    if (client.connect(clientId.c_str(), mqtt_username, mqtt_password)) {
-      Serial.println("✅ MQTT connected successfully!");
-
-      // Subscribe to control topic with QoS 1
-      if (client.subscribe(control_topic, MQTT_QOS)) {
-        Serial.printf("   ✅ Subscribed to: %s (QoS %d)\n", control_topic, MQTT_QOS);
-      } else {
-        Serial.printf("   ❌ Failed to subscribe to: %s\n", control_topic);
-      }
-
-      // Subscribe to display topic with QoS 1
-      if (client.subscribe(display_topic, MQTT_QOS)) {
-        Serial.printf("   ✅ Subscribed to: %s (QoS %d)\n", display_topic, MQTT_QOS);
-      }
-
-      // Send initial status
-      sendStatusUpdate();
-
-      // Reset attempt counter
-      attempts = 0;
-
-    } else {
-      Serial.printf("❌ MQTT connection failed (rc=%d)\n", client.state());
-      Serial.printf("   Retrying in %d seconds...\n", MQTT_RECONNECT_DELAY / 1000);
-      delay(MQTT_RECONNECT_DELAY);
-    }
+  // Check if we should attempt reconnection (avoid too frequent attempts)
+  unsigned long currentTime = millis();
+  if (mqttReconnectAttempts > 0 && (currentTime - lastReconnectAttempt) < calculateBackoffDelay(mqttReconnectAttempts)) {
+    return; // Too soon to retry
   }
 
-  if (!client.connected()) {
-    Serial.println("❌ Failed to connect to MQTT after 5 attempts - restarting ESP32");
+  if (mqttReconnectAttempts >= MAX_MQTT_RECONNECT_ATTEMPTS) {
+    Serial.printf("❌ Failed to connect to MQTT after %d attempts - restarting ESP32\n", MAX_MQTT_RECONNECT_ATTEMPTS);
     delay(5000);
     ESP.restart();
+    return;
+  }
+
+  mqttReconnectAttempts++;
+  lastReconnectAttempt = currentTime;
+
+  unsigned long backoffDelay = calculateBackoffDelay(mqttReconnectAttempts);
+  Serial.printf("🔄 MQTT connection attempt %d/%d to %s:%d (next retry in %lums)\n",
+                mqttReconnectAttempts, MAX_MQTT_RECONNECT_ATTEMPTS, mqtt_server, mqtt_port, backoffDelay);
+
+  // Use unique client ID with timestamp to avoid conflicts
+  String clientId = String(mqtt_client_id) + "_" + String(millis());
+
+  // Connect with authentication
+  if (client.connect(clientId.c_str(), mqtt_username, mqtt_password)) {
+    Serial.println("✅ MQTT connected successfully!");
+
+    // Subscribe to control topic with QoS 1
+    if (client.subscribe(control_topic, MQTT_QOS)) {
+      Serial.printf("   ✅ Subscribed to: %s (QoS %d)\n", control_topic, MQTT_QOS);
+    } else {
+      Serial.printf("   ❌ Failed to subscribe to: %s\n", control_topic);
+    }
+
+    // Subscribe to display topic with QoS 1
+    if (client.subscribe(display_topic, MQTT_QOS)) {
+      Serial.printf("   ✅ Subscribed to: %s (QoS %d)\n", display_topic, MQTT_QOS);
+    }
+
+    // Send initial status
+    sendStatusUpdate();
+
+    // Reset attempt counter on successful connection
+    mqttReconnectAttempts = 0;
+
+  } else {
+    Serial.printf("❌ MQTT connection failed (rc=%d)\n", client.state());
+    Serial.printf("   Will retry in %lums with exponential backoff\n", backoffDelay);
   }
 }
 

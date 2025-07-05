@@ -17,13 +17,16 @@ class ESP32Manager {
   private isConnected: boolean = false;
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 10;
+  private baseReconnectDelay: number = 1000; // Start with 1 second
+  private maxReconnectDelay: number = 30000; // Max 30 seconds
+  private reconnectTimeout: NodeJS.Timeout | null = null;
 
   constructor() {
     this.config = {
       brokerUrl: process.env.MQTT_BROKER || 'mqtt://broker.hivemq.com',
       mockMode: process.env.MOCK_MQTT === 'true',
-      reconnectPeriod: 5000, // 5 seconds
-      connectTimeout: 30000, // 30 seconds
+      reconnectPeriod: 1000, // Faster initial reconnect (1 second)
+      connectTimeout: 10000, // Faster timeout (10 seconds)
     };
 
     // Check if MQTT is enabled
@@ -45,15 +48,16 @@ class ESP32Manager {
     try {
       console.log(`🔄 ESP32Manager: Connecting to MQTT broker: ${this.config.brokerUrl}`);
 
-      // Prepare connection options
+      // Prepare connection options optimized for fast response
       const connectOptions: any = {
-        reconnectPeriod: this.config.reconnectPeriod,
+        reconnectPeriod: false, // Disable automatic reconnection (we handle it manually)
         connectTimeout: this.config.connectTimeout,
         clientId: `washing-machine-server-${Date.now()}`,
         clean: true,
-        keepalive: 15,  // Faster keep-alive (15 seconds instead of 60)
+        keepalive: 10,  // Very fast keep-alive (10 seconds)
         queueQoSZero: false,  // Don't queue QoS 0 messages
         reschedulePings: true,  // Reschedule pings on send
+        protocolVersion: 4,  // Use MQTT 3.1.1 for better compatibility
       };
 
       // Add authentication if credentials are provided
@@ -108,7 +112,9 @@ class ESP32Manager {
       // Circuit breaker: Stop if too many attempts
       if (this.reconnectAttempts > this.maxReconnectAttempts) {
         console.error(`🛑 ESP32Manager: Circuit breaker activated - stopping reconnection after ${this.reconnectAttempts} attempts`);
-        this.client.end(true);
+        if (this.client) {
+          this.client.end(true);
+        }
       }
     });
 
@@ -118,19 +124,44 @@ class ESP32Manager {
     });
   }
 
+  private calculateBackoffDelay(): number {
+    // Exponential backoff: 2^attempt * baseDelay, with jitter
+    const exponentialDelay = Math.min(
+      this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
+      this.maxReconnectDelay
+    );
+
+    // Add random jitter (±20%) to avoid thundering herd
+    const jitter = exponentialDelay * 0.2 * (Math.random() - 0.5);
+    const finalDelay = Math.max(exponentialDelay + jitter, 1000); // Minimum 1 second
+
+    return Math.floor(finalDelay);
+  }
+
   private handleConnectionError(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error(`❌ ESP32Manager: Max reconnection attempts (${this.maxReconnectAttempts}) reached - stopping reconnection`);
-      this.client.end(true); // Force close the client
+      if (this.client) {
+        this.client.end(true); // Force close the client
+      }
       return;
     }
 
-    setTimeout(() => {
-      if (!this.isConnected && !this.config.mockMode && this.reconnectAttempts < this.maxReconnectAttempts) {
-        console.log('🔄 ESP32Manager: Attempting to reconnect...');
+    this.reconnectAttempts++;
+    const backoffDelay = this.calculateBackoffDelay();
+
+    console.log(`🔄 ESP32Manager: Reconnecting to MQTT broker (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${backoffDelay}ms`);
+
+    // Clear any existing timeout
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+    }
+
+    this.reconnectTimeout = setTimeout(() => {
+      if (!this.isConnected && !this.config.mockMode && this.reconnectAttempts <= this.maxReconnectAttempts) {
         this.initializeMQTT();
       }
-    }, this.config.reconnectPeriod * (this.reconnectAttempts + 1));
+    }, backoffDelay);
   }
 
   private publishMessage(topic: string, message: string): Promise<void> {

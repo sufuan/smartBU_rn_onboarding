@@ -216,7 +216,7 @@ async function addCustomBooking() {
       break;
     case 'active':
       // Booking that's already active (started 5 minutes ago)
-      const activeTime = new Date(Date.now() - 5 * 60 * 1000);
+      const activeTime = new Date(Date.now() - 26 * 60 * 1000);
       await addTestBookingAtTime(activeTime);
       break;
     case 'soon':
